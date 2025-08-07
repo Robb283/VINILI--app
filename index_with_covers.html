@@ -1,0 +1,51 @@
+
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>🎶 Che disco ascolto oggi?</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background: #f9f9f9; }
+    #cover { max-width: 300px; margin-top: 20px; display: none; border: 1px solid #ccc; box-shadow: 2px 2px 6px rgba(0,0,0,0.2); }
+    button { font-size: 1.2em; padding: 10px 20px; cursor: pointer; }
+    #info { margin-top: 30px; }
+  </style>
+</head>
+<body>
+  <h1>🎶 Che disco ascolto oggi?</h1>
+  <button onclick="pickRandom()">🎲 Estrai un disco</button>
+  <div id="info"></div>
+  <img id="cover" src="" alt="Copertina disco" />
+
+  <script>
+    let collection = [];
+
+    fetch("vinili_internazionale_with_covers.json")
+      .then(res => res.json())
+      .then(data => { collection = data; });
+
+    function pickRandom() {
+      if (collection.length === 0) {
+        document.getElementById("info").innerText = "Collezione non caricata.";
+        return;
+      }
+      const disco = collection[Math.floor(Math.random() * collection.length)];
+      document.getElementById("info").innerHTML = `
+        <h2>${disco.Title}</h2>
+        <h3>${disco.Artist}</h3>
+        <p><strong>Label:</strong> ${disco.Label || '-'}<br>
+           <strong>Formato:</strong> ${disco.Format || '-'}<br>
+           <strong>Anno:</strong> ${disco.Released || '-'}<br>
+           <strong>Rating:</strong> ${disco.Rating || '-'}
+        </p>`;
+
+      if (disco.CoverURL && disco.CoverURL.trim() !== "") {
+        document.getElementById("cover").src = disco.CoverURL;
+        document.getElementById("cover").style.display = "block";
+      } else {
+        document.getElementById("cover").style.display = "none";
+      }
+    }
+  </script>
+</body>
+</html>
