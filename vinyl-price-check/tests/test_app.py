@@ -93,3 +93,18 @@ def test_reissue_filter_and_first_press_warning(monkeypatch):
     d=c.get('/api/search?artist=A&title=B&pressing=reissue').json()
     assert [r['id'] for r in d['results']]==[1]
     assert c.get('/api/search?artist=A&title=B&pressing=first').json()['warning']
+
+
+def test_single_query_for_typed_or_photo_text(monkeypatch):
+    seen = []
+    async def fake(path, params=None, authenticated=True):
+        seen.append(params)
+        return {'results': [], 'pagination': {}}
+    monkeypatch.setattr(m, 'discogs', fake)
+    c = TestClient(m.app)
+    assert c.get('/api/search?q=Terry+Allen+Lubbock+on+Everything').status_code == 200
+    assert seen[0]['q'] == 'Terry Allen Lubbock on Everything'
+    assert 'artist' not in seen[0]
+    assert seen[0]['format'] == 'Vinyl'
+    assert c.get('/api/search?q=%20%20').status_code == 422
+    assert c.get('/api/search?q=' + 'a' * 221).status_code == 422

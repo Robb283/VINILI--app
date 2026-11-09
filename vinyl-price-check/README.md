@@ -1,6 +1,6 @@
 # Vinyl Price Check — 0.1
 
-Web app mobile in italiano, FastAPI + HTML/CSS/JavaScript senza dipendenze frontend. Nessuna registrazione o credenziale chiesta ai visitatori. Nessun prezzo dimostrativo nel prodotto.
+Web app mobile in italiano, FastAPI + HTML/CSS/JavaScript. La lettura foto utilizza Tesseract.js 7 caricato su richiesta. Nessuna registrazione o credenziale chiesta ai visitatori. Nessun prezzo dimostrativo nel prodotto.
 
 ## Avvio
 
@@ -84,3 +84,13 @@ I test usano fixture sintetiche esplicite solo nel codice di test, mai servite a
 - Test automatici: 19 passati anche in ambiente pulito con le versioni di requirements.txt.
 - Prove reali locali autenticate del 9 novembre 2026: Animals (release 768254) e Abbey Road (7950925) restituiscono suggerimenti EUR; Nevermind test pressing (22528703) non ha suggerimenti e produce Non valutabile. Le selezioni automatiche in questi smoke test verificano il flusso tecnico e non certificano un’edizione fisica.
 - Per ripetere il controllo live, da root progetto: `PYTHONPATH=. python tests/live_check.py`. Il token viene richiesto senza eco e non salvato. I dati di prezzo dinamici non sono inclusi nel repository.
+
+## Versione 0.2 — ricerca rapida e foto
+
+Due soli campi principali: nome del disco (artista e album insieme) e prezzo. Condizioni, paese, tipo di stampa e catalogo restano facoltativi e chiusi inizialmente. L’API accetta anche `q`, preservando la compatibilità con i vecchi parametri artist/title.
+
+Foto: acquisizione da fotocamera o galleria, JPG/PNG/WebP entro 15 MB, lettura OCR locale con Tesseract.js 7.0.0. Il motore, il worker e il modello inglese vengono scaricati da jsDelivr solo quando si sceglie una foto. Il CDN può osservare i download tecnici, ma il codice non trasmette la foto: immagine e canvas rimangono nel browser. Alla ricerca vengono inviati solo il testo confermato e i filtri del modulo. Supporto HEIC non incluso. L’OCR legge le scritte, non riconosce l’immagine della copertina: i risultati sono candidati da confermare e non certificano la stampa. Il testo letto si può correggere o ricomporre scegliendo le righe con artista e titolo. Per copertine astratte o scritte difficili resta disponibile il campo manuale.
+
+Il riconoscimento visivo generale, distinto dall’OCR, richiederebbe un modello multimodale o un catalogo di immagini: non è implementato né dichiarato funzionante in questa versione. Le condizioni del disco non sono dedotte dalla foto della copertina.
+
+Il gate dei dati di mercato pubblici resta disattivato come nel rilascio precedente. Questa modifica non lo aggira.

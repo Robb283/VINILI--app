@@ -13,7 +13,7 @@ from app.main import Assessment, assess, search
 
 async def run():
     for artist, title in [('Pink Floyd', 'Animals'), ('Nirvana', 'Nevermind'), ('The Beatles', 'Abbey Road')]:
-        found = await search(artist=artist, title=title, country='Germany', catno='', pressing='any', page=1)
+        found = await search(artist=artist, title=title, country='Germany', catno='', pressing='any', page=1, q='')
         if not found['results']:
             print(json.dumps({'artist': artist, 'title': title, 'results': 0}))
             continue

@@ -40,7 +40,7 @@ async def headers(request: Request, call_next):
     response.headers['Cache-Control'] = 'no-store'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; worker-src 'self' blob:; style-src 'self'; img-src 'self' blob: data:; connect-src 'self' https://cdn.jsdelivr.net; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
     return response
 
 
@@ -96,16 +96,20 @@ async def health():
 
 
 @app.get('/api/search')
-async def search(artist: str = Query(min_length=1, max_length=150),
-                 title: str = Query(min_length=1, max_length=150),
+async def search(artist: str = Query('', max_length=150),
+                 title: str = Query('', max_length=150),
                  country: str = Query('', max_length=80),
                  catno: str = Query('', max_length=80),
                  pressing: Literal['any', 'first', 'reissue'] = 'any',
-                 page: int = Query(1, ge=1, le=50)):
-    if not artist.strip() or not title.strip():
-        raise HTTPException(422, 'Inserisci artista e titolo.')
-    params = {'type': 'release', 'format': 'Vinyl', 'artist': artist.strip(),
-              'release_title': title.strip(), 'per_page': 20, 'page': page}
+                 page: int = Query(1, ge=1, le=50),
+                 q: str = Query('', max_length=220)):
+    if not q.strip() and (not artist.strip() or not title.strip()):
+        raise HTTPException(422, 'Scrivi artista e album nel campo di ricerca, oppure usa una foto con testo leggibile.')
+    params = {'type': 'release', 'format': 'Vinyl', 'per_page': 20, 'page': page}
+    if q.strip():
+        params['q'] = q.strip()
+    else:
+        params.update(artist=artist.strip(), release_title=title.strip())
     if country.strip(): params['country'] = country.strip()
     if catno.strip(): params['catno'] = catno.strip()
     data = await discogs('/database/search', params)
