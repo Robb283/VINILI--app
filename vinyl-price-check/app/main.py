@@ -170,7 +170,7 @@ async def assess(body: Assessment):
               'source_url': f'https://www.discogs.com/release/{body.release_id}',
               'checked_at': datetime.now(timezone.utc).isoformat(), 'currency': 'EUR'}
     if os.getenv('ENABLE_MARKET_DATA') != 'true':
-        return result | evaluate(body, {}, {}) | {'reason': 'Dati di mercato disattivati: il gestore deve verificare i diritti d’uso Discogs prima dell’attivazione.'}
+        return result | evaluate(body, {}, {}) | {'reason': 'Dati di mercato disattivati dal gestore. Nessuna stima viene inventata.'}
     warnings = []
     stats, suggestions = {}, {}
     for name, path, params in [('stats', f'/marketplace/stats/{body.release_id}', {'curr_abbr': 'EUR'}),

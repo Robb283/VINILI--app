@@ -73,3 +73,14 @@ I test usano fixture sintetiche esplicite solo nel codice di test, mai servite a
 2. Chiarire con Discogs i diritti del servizio pubblico per Restricted Data.
 3. Provare edizioni reali confrontando etichetta, catalogo e matrici.
 4. Integrare solo dati comparabili autorizzati prima di aggiungere un vero intervallo di valore e affidabilità superiore.
+
+## Stato della pubblicazione
+
+- App: https://vinyl-price-check.onrender.com
+- Render service: `srv-dbotboe7bikc73a7lr4g`, workspace `tea-dbot87ec6qcc738memt0`.
+- Repository: https://github.com/Robb283/VINILI--app/tree/vinyl-price-check/vinyl-price-check
+- Ricerca: attiva con credenziale custodita nell’ambiente Render.
+- Mercato pubblico: disattivato. La revisione automatica ha rifiutato l’attivazione persistente dei dati di mercato pubblici finché i diritti d’uso non sono chiariti. Nessuna modifica alternativa aggira il blocco.
+- Test automatici: 19 passati anche in ambiente pulito con le versioni di requirements.txt.
+- Prove reali locali autenticate del 9 novembre 2026: Animals (release 768254) e Abbey Road (7950925) restituiscono suggerimenti EUR; Nevermind test pressing (22528703) non ha suggerimenti e produce Non valutabile. Le selezioni automatiche in questi smoke test verificano il flusso tecnico e non certificano un’edizione fisica.
+- Per ripetere il controllo live, da root progetto: `PYTHONPATH=. python tests/live_check.py`. Il token viene richiesto senza eco e non salvato. I dati di prezzo dinamici non sono inclusi nel repository.
