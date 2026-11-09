@@ -58,21 +58,27 @@ async function readPhoto(file) {
       langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int',
       logger: info => {
         if (info.status === 'recognizing text') photoStatus.textContent = `Leggo le scritte nella foto… ${Math.round(info.progress * 100)}%`;
+        else if (info.status === 'loading language traineddata') photoStatus.textContent = `Scarico il modello di lettura… ${Math.round(info.progress * 100)}%`;
+        else if (info.status === 'loading tesseract core') photoStatus.textContent = 'Carico il motore di lettura sul dispositivo…';
       },
     });
     const {data} = await photoWorker.recognize(canvas, {rotateAuto: true});
-    const lines = data.text.split(/\r?\n/).map(s => s.trim()).filter(s => /[a-zA-ZÀ-ÿ]{2}/.test(s));
+    const lines = data.text.split(/\r?\n/).map(s => s.trim().replace(/[|~]+$/g, '').trim().slice(0, 100)).filter(s => /[a-zA-ZÀ-ÿ]{2}/.test(s));
     if (!lines.length || data.confidence < 25) {
       photoStatus.textContent = 'Non leggo abbastanza testo per cercare. Prova una foto più vicina del titolo o dell’etichetta, oppure scrivi il nome del disco.';
       return;
     }
-    document.getElementById('query').value = lines.slice(0, 4).join(' ').slice(0, 220);
-    for (const line of lines.slice(0, 12)) {
+    // Skip obvious page controls / format metadata only in the proposed query.
+    // Every detected line stays selectable: this is a heuristic, not identification.
+    const metadata = /\b(?:\d+\s*[x×]?\s*LP|Repress|Reissue|Records\s*[-–—]|for sale|Collected|Wanted|Ratings|Last Sold|Lowest|Median|Highest|Discogs ID|TEST DOCUMENT)\b/i;
+    const proposed = lines.filter(line => !metadata.test(line)).slice(0, 2);
+    document.getElementById('query').value = proposed.join(' ').slice(0, 220);
+    for (const [index, line] of lines.slice(0, 12).entries()) {
       const chip = document.createElement('button');
       chip.type = 'button';
       chip.className = 'ocr-chip';
       chip.textContent = line.slice(0, 100);
-      chip.setAttribute('aria-pressed', 'false');
+      chip.setAttribute('aria-pressed', proposed.includes(line) ? 'true' : 'false');
       chip.onclick = () => {
         chip.setAttribute('aria-pressed', chip.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
         document.getElementById('query').value = Array.from(document.querySelectorAll('.ocr-chip[aria-pressed="true"]')).map(n => n.textContent).join(' ').slice(0, 220);

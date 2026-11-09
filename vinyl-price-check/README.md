@@ -94,3 +94,5 @@ Foto: acquisizione da fotocamera o galleria, JPG/PNG/WebP entro 15 MB, lettura O
 Il riconoscimento visivo generale, distinto dall’OCR, richiederebbe un modello multimodale o un catalogo di immagini: non è implementato né dichiarato funzionante in questa versione. Le condizioni del disco non sono dedotte dalla foto della copertina.
 
 Il gate dei dati di mercato pubblici resta disattivato come nel rilascio precedente. Questa modifica non lo aggira.
+
+Verifica 0.2: 20 test backend passati. Prova browser sul servizio Render: una foto di prova con scritte Terry Allen / Lubbock viene letta realmente dall’OCR; selezionando artista e titolo la ricerca restituisce sei edizioni su Discogs. Le prime due righe lette sono proposte automaticamente, le altre sono selezionabili. La prova verifica la lettura del testo e la ricerca, non un riconoscimento visivo generale o la correttezza di una stampa fisica. I test non attivano il gate dei dati di mercato pubblici.
