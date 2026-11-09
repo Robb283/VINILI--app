@@ -7,6 +7,8 @@ import time
 from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
+from app.translate import translate_notes
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -14,7 +16,7 @@ from fastapi.responses import FileResponse
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-app = FastAPI(title='First Press — guida alle prime stampe', version='0.4.0')
+app = FastAPI(title='First Press — guida alle prime stampe', version='0.5.0')
 static = Path(__file__).parent / 'static'
 app.mount('/static', StaticFiles(directory=static), name='static')
 cache = OrderedDict()
@@ -35,7 +37,7 @@ async def headers(request: Request, call_next):
     response.headers['Cache-Control'] = 'no-store'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; worker-src 'self' blob:; style-src 'self'; img-src 'self' blob: data:; connect-src 'self' https://cdn.jsdelivr.net; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://i.discogs.com https://img.discogs.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
     return response
 
 
@@ -48,7 +50,7 @@ async def discogs(path: str, params=None, authenticated=True):
     now = time.monotonic()
     if key in cache and now - cache[key][0] < 300:
         return cache[key][1]
-    headers = {'User-Agent': os.getenv('DISCOGS_USER_AGENT', 'FirstPress/0.4')}
+    headers = {'User-Agent': os.getenv('DISCOGS_USER_AGENT', 'FirstPress/0.5')}
     if token:
         headers['Authorization'] = 'Discogs token=' + token
     # One upstream request at a time, <= 24/minute. No rotating keys or retries.
@@ -109,7 +111,7 @@ def version_info(item):
 def rank_versions(versions):
     rows = [version_info(v) for v in versions if not v.get('major_formats') or 'Vinyl' in v['major_formats']]
     rows.sort(key=lambda v: (v['year'] or 9999, v['reissue'], v['special'], str(v.get('released') or ''), v['id']))
-    eligible = [v for v in rows if v['year'] and not v['reissue'] and not v['special']]
+    eligible = [v for v in rows if v['year'] and not v['special']]
     chosen = eligible[0] if eligible else (rows[0] if rows else None)
     earliest = eligible[0]['year'] if eligible else None
     return rows, chosen, earliest
@@ -122,7 +124,7 @@ def release_details(data, earliest=None, partial=False):
     descriptions = [s for f in formats for s in f.get('descriptions', [])]
     row = version_info({'id': data['id'], 'format': descriptions, 'released': data.get('released') or data.get('year')})
     if row['reissue']:
-        verdict = 'Classificata come ristampa / repress'
+        verdict = 'Indicata come ristampa nel catalogo'
         explanation = 'Discogs riporta Reissue o Repress. Non usarla come riferimento automatico per una prima tiratura.'
     elif row['special']:
         verdict = 'Edizione speciale da verificare'
@@ -141,7 +143,7 @@ def release_details(data, earliest=None, partial=False):
     return {'id': data['id'], 'title': data.get('title'), 'country': data.get('country'),
             'year': data.get('year'), 'released': data.get('released'),
             'labels': [{'name': x.get('name'), 'catno': x.get('catno')} for x in data.get('labels', [])],
-            'formats': formats, 'identifiers': identifiers, 'notes': data.get('notes') or '',
+            'formats': formats, 'identifiers': identifiers, 'notes': data.get('notes') or '', 'images': release_images(data),
             'companies': [{'name': x.get('name'), 'role': x.get('entity_type_name')} for x in data.get('companies', [])],
             'verdict': verdict, 'explanation': explanation, 'confidence': 'Da verificare sulla copia',
             'source_url': f"https://www.discogs.com/release/{data['id']}"}
@@ -176,58 +178,107 @@ def master_match_score(query, title):
     return len(requested & tokens(title)) / len(requested) if requested else 0
 
 
+
+def country_matches(country, region):
+    return region in re.findall(r'[A-Z]{2,}', str(country or ''))
+
+
+def release_images(data):
+    images = sorted((data.get('images') or []), key=lambda image: image.get('type') != 'primary')
+    result = []
+    for image in images:
+        uri = image.get('uri') or image.get('resource_url') or ''
+        parsed = urlparse(uri)
+        if parsed.scheme == 'https' and parsed.hostname in {'i.discogs.com', 'img.discogs.com'}:
+            result.append({'url': uri, 'type': image.get('type'), 'width': image.get('width'), 'height': image.get('height')})
+    return result[:6]
+
+
+async def scan_versions(master_id, country=''):
+    versions, pages, total = [], 1, 0
+    for page in range(1, 3):
+        params = {'format': 'Vinyl', 'sort': 'released', 'sort_order': 'asc', 'per_page': 100, 'page': page}
+        if country: params['country'] = country
+        data = await discogs(f'/masters/{master_id}/versions', params, authenticated=False)
+        versions.extend(data.get('versions', []))
+        pages = data.get('pagination', {}).get('pages', 1)
+        total = data.get('pagination', {}).get('items', len(versions))
+        if page >= pages: break
+    rows, chosen, earliest = rank_versions(versions)
+    return {'rows': rows, 'chosen': chosen, 'earliest': earliest, 'partial': pages > 2, 'total': total}
+
+
+def select_country_companions(primary, rows):
+    """Primary first; UK/US each appear once, including compound territories."""
+    selected = [(primary, 'world')]
+    covered = {code for code in ('UK', 'US') if country_matches(primary.get('country'), code)}
+    for code in ('UK', 'US'):
+        if code in covered: continue
+        _, chosen, _ = rank_versions([r for r in rows if country_matches(r.get('country'), code)])
+        if chosen and chosen['id'] not in {item['id'] for item, _ in selected}:
+            selected.append((chosen, code))
+    return selected
+
+
+async def enrich_edition(row, role, earliest, partial):
+    data = await discogs(f"/releases/{row['id']}", authenticated=False)
+    details = release_details(data, earliest, partial)
+    details['role'] = role
+    details['partial'] = partial
+    proper_names = [x['name'] for x in details['labels'] + details['companies'] if x.get('name')]
+    proper_names += [name + ' Records' for name in proper_names if not name.endswith('Records')]
+    protected = details['identifiers'] + [{'value': name} for name in proper_names]
+    details['translation'] = await translate_notes(details['notes'], protected)
+    details['price'] = await optional_price(row['id'])
+    return details
+
+
 @app.get('/api/guide')
-async def guide(q: str = Query(min_length=2, max_length=220), country: str = Query('', max_length=80),
-                master_id: int | None = Query(None, gt=0)):
-    if len(q.strip()) < 2: raise HTTPException(422, 'Scrivi almeno artista e titolo, oppure usa una foto leggibile.')
+async def guide(q: str = Query(min_length=2, max_length=220), master_id: int | None = Query(None, gt=0)):
+    if len(q.strip()) < 2: raise HTTPException(422, 'Scrivi artista e titolo.')
     matches = []
     if master_id is None:
-        # A master can list CD as its representative format while having original
-        # vinyl versions. Filter Vinyl only on /versions, never on the album search.
         search = await discogs('/database/search', {'q': q.strip(), 'type': 'master', 'per_page': 10})
         matches = [{k: r.get(k) for k in ('id', 'title', 'year')} for r in search.get('results', [])]
-        if not matches:
-            return {'found': False, 'reason': 'Nessun album trovato. Prova artista e titolo senza parole come “prima stampa”, oppure correggi il testo della foto.'}
+        if not matches: return {'found': False, 'reason': 'Nessun album trovato. Prova artista e titolo senza altri dettagli.'}
         matches.sort(key=lambda r: master_match_score(q, r.get('title') or ''), reverse=True)
         if master_match_score(q, matches[0].get('title') or '') < .55:
-            return {'found': False, 'reason': 'I risultati citano il disco ma il titolo non corrisponde abbastanza. Prova “Artista - Titolo”, senza dettagli della stampa.'}
+            return {'found': False, 'reason': 'Il titolo non corrisponde abbastanza. Prova “Artista - Titolo”.'}
         master_id = matches[0]['id']
     master = await discogs(f'/masters/{master_id}', authenticated=False)
-    versions, pages, total = [], 1, 0
-    for page in range(1, 4):
-        params = {'format': 'Vinyl', 'sort': 'released', 'sort_order': 'asc', 'per_page': 50, 'page': page}
-        if country.strip(): params['country'] = country.strip()
-        result = await discogs(f'/masters/{master_id}/versions', params, authenticated=False)
-        versions.extend(result.get('versions', []))
-        pages = result.get('pagination', {}).get('pages', 1)
-        total = result.get('pagination', {}).get('items', len(versions))
-        if page >= pages: break
-    partial = pages > 3
-    rows, chosen, earliest = rank_versions(versions)
-    # Keep the proposed edition visible even when very many undated/special variants exist.
-    shown = rows[:30]
-    if chosen and chosen not in shown: shown.insert(0, chosen)
-    details = None
-    if chosen:
-        data = await discogs(f"/releases/{chosen['id']}", authenticated=False)
-        details = release_details(data, earliest, partial)
-        details['price'] = await optional_price(chosen['id'])
+    worldwide = await scan_versions(master_id)
+    primary = worldwide['chosen']
+    if not primary:
+        return {'found': False, 'reason': 'Non sono state trovate versioni in vinile per questo album.'}
+    contexts = {'world': worldwide}
+    rows = worldwide['rows']
+    missing, warnings = [], []
+    for region in ('UK', 'US'):
+        if country_matches(primary.get('country'), region): continue
+        if worldwide['partial']:
+            try:
+                regional = await scan_versions(master_id, region)
+                contexts[region] = regional
+                # Replace the sampled regional rows with the dedicated scan.
+                rows = [r for r in rows if not country_matches(r.get('country'), region)] + regional['rows']
+            except HTTPException:
+                warnings.append(f'Impossibile completare il controllo {region}.')
+        else:
+            regional_rows = [r for r in rows if country_matches(r.get('country'), region)]
+            regional_rows, chosen, earliest = rank_versions(regional_rows)
+            contexts[region] = {'rows': regional_rows, 'chosen': chosen, 'earliest': earliest, 'partial': False}
+        if region in contexts and not contexts[region]['chosen']: missing.append(region)
+    selected = select_country_companions(primary, rows)
+    editions = []
+    tasks = [enrich_edition(row, role, contexts.get(role, worldwide)['earliest'], contexts.get(role, worldwide)['partial']) for row, role in selected]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for (row, role), result in zip(selected, results):
+        if isinstance(result, Exception):
+            warnings.append(f"Dettagli dell’edizione {row['id']} non raggiungibili.")
+        else: editions.append(result)
     return {'found': True, 'master': {'id': master_id, 'title': master.get('title'),
             'artist': ', '.join(x.get('name', '') for x in master.get('artists', [])),
             'year': master.get('year'), 'source_url': f'https://www.discogs.com/master/{master_id}'},
-            'matches': matches, 'scope': country.strip() or 'Tutti i paesi', 'earliest_candidate_year': earliest,
-            'candidates': shown, 'scanned': len(rows), 'total': total, 'partial': partial,
-            'guide': details, 'checked_at': datetime.now(timezone.utc).isoformat(),
-            'limitation': 'Il catalogo è collaborativo e può essere incompleto. Anno più antico, numero di catalogo e assenza del flag Reissue non certificano una prima stampa. Il paese cambia il significato di “prima”.'}
-
-
-@app.get('/api/releases/{release_id}')
-async def release(release_id: int, master_id: int = Query(gt=0), country: str = Query('', max_length=80)):
-    if release_id <= 0: raise HTTPException(422, 'Edizione non valida.')
-    context = await guide(q='edizione', country=country, master_id=master_id)
-    data = await discogs(f'/releases/{release_id}', authenticated=False)
-    if data.get('master_id') != master_id:
-        raise HTTPException(422, 'Questa edizione non appartiene all’album selezionato.')
-    details = release_details(data, context['earliest_candidate_year'], context['partial'])
-    details['price'] = await optional_price(release_id)
-    return details
+            'matches': matches, 'editions': editions, 'missing_regions': missing, 'warnings': warnings,
+            'partial': worldwide['partial'], 'checked_at': datetime.now(timezone.utc).isoformat(),
+            'limitation': 'Edizioni commerciali datate più vecchie trovate su Discogs; il catalogo può essere incompleto. Più tirature possono condividere lo stesso anno.'}

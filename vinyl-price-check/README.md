@@ -1,40 +1,39 @@
-# First Press — guida alle prime stampe
+# First Press — edizioni più vecchie a confronto
 
-Versione 0.4. La web app precedentemente chiamata Vinyl Price Check ora si concentra sull’individuazione delle prime stampe. Inserisci artista e titolo in un campo, o leggi il testo di una foto, e ottieni una guida con etichetta, catalogo, anno, paese, matrici e note distintive. Il paese è facoltativo. Il prezzo è secondario e compare solo se disponibile e attivato dal gestore.
+Versione 0.5. App FastAPI in italiano, disponibile su https://vinyl-price-check.onrender.com . Il repository e l’URL storico restano invariati per conservare gli aggiornamenti.
 
-## Utilizzo
+## Flusso
 
-App: https://vinyl-price-check.onrender.com
+Solo artista e titolo, in un campo. Nessuna ricerca con foto e nessun caricamento di immagini. La risposta compatta mostra le copertine delle specifiche edizioni:
 
-1. Scrivi artista e album, oppure scegli una foto JPG/PNG/WebP con testo leggibile.
-2. Facoltativamente scegli il paese: prima uscita mondiale e prima edizione italiana/americana sono ambiti diversi.
-3. La ricerca propone un album Discogs e carica direttamente una guida alle candidate più precoci. Si può cambiare album se il risultato proposto è sbagliato.
-4. Confronta etichette, indirizzi, catalogo, note e matrici con il disco del commerciante. Puoi aprire altre edizioni per controllare le differenze.
+- più vecchia UK → aggiunge la più vecchia US, se presente;
+- più vecchia US → aggiunge la più vecchia UK, se presente;
+- più vecchia di altro paese → aggiunge UK e US, quando presenti;
+- un’edizione che copre entrambi i territori compare una sola volta.
 
-Il solo anno, lo stesso numero di catalogo o l’assenza del flag Reissue non certificano una prima tiratura. Varianti dello stesso anno possono avere copertine o incisioni diverse. L’app non certifica autenticità e non deduce lo stato del vinile dalla copertina.
+Per ogni scheda: paese e data, etichetta/catalogo, formato, copertina con eventuali immagini aggiuntive, note italiane, link alla fonte. Matrici e note originali sono chiuse inizialmente e apribili con un clic. L’eventuale fascia prezzo compare solo se realmente disponibile e autorizzata; il flag Marketplace resta disattivato, senza modifiche alle precedenti restrizioni.
 
-## Dati e limiti
+## Selezione e limiti
 
-- Fonti: API documentate Discogs `/database/search` (master), `/masters/{id}`, `/masters/{id}/versions`, `/releases/{id}`.
-- Versioni filtrate per Vinyl e paese facoltativo, richieste in ordine di data crescente. Massimo 3 pagine da 50. Una ricerca troncata è indicata come parziale; mostriamo fino a 30 alternative oltre alla candidata proposta.
-- Le date sconosciute non vengono inventate. Tra le versioni datate vengono proposte quelle più precoci non marcate Reissue/Repress/Promo/Test Pressing/Unofficial/Acetate. Questi criteri selezionano candidate, non provano la prima tiratura.
-- Il main_release del master non è assunto come prima stampa. L’anno del master può riferirsi a formati diversi dal vinile.
-- Notes e identificativi sono riprodotti con attribuzione e link alla release. Le note sono contributi degli utenti Discogs; è necessaria la verifica sulla copia.
-- L’OCR Tesseract.js 7 legge scritte nel browser. Non è un riconoscitore visivo di copertine senza testo. Foto e canvas non vengono inviati al server. Il motore, worker e modello inglese sono scaricati da jsDelivr; al CDN sono visibili i download tecnici, non la foto. HEIC non incluso. La proposta di testo è correggibile.
+La ricerca trova l’album (master) senza filtrare il formato rappresentativo: un master CD può avere prime versioni in vinile. Il filtro Vinyl viene applicato alle versioni. Sono considerate le versioni datate commerciali più vecchie trovate; promo, test pressing, acetati e edizioni non ufficiali non vengono preferiti alle versioni commerciali. La presenza del flag Reissue/Repress viene mostrata, senza scegliere una versione più recente solo perché priva di quel flag.
 
-## Prezzo facoltativo
+Il catalogo mondiale viene letto in ordine cronologico, fino a 2 pagine da 100. Se è completo, US e UK vengono selezionate da quel catalogo; se è parziale, vengono richiesti anche cataloghi regionali dedicati (fino a 200 versioni per territorio). Ricerca parziale e territori non trovati sono segnalati. Date assenti non vengono inventate. Nello stesso anno possono esistere tirature non ordinabili con certezza: non si certifica una prima stampa solo dalla data.
 
-`ENABLE_MARKET_DATA` resta `false` sul servizio attuale. Non è un requisito per utilizzare la guida. Non viene richiesto alcun prezzo di acquisto e non c’è più un verdetto economico. Le vecchie route di valutazione `/api/assess` e ricerca release `/api/search` sono rimosse.
+Le immagini sono quelle della release specifica, fornite dall’API Discogs. Si usano soltanto URL HTTPS dei domini i.discogs.com e img.discogs.com; nessuna immagine generata o copertina generica è sostituita a una mancante. Il browser le carica da Discogs; il provider può vedere le richieste tecniche. Se non sono accessibili viene mostrato un messaggio con link alla fonte. Le foto secondarie non sono etichettate automaticamente come retro/etichetta perché l’API non ne certifica il contenuto.
 
-Se e quando l’uso pubblico viene autorizzato e la funzione attivata, il dettaglio può leggere suggerimenti Discogs in EUR per VG, VG+ e NM. Gli estremi sono dichiarati come suggerimenti per condizioni diverse, non come minimo/mediana/massimo delle vendite concluse. Dati mancanti, valute diverse o API non accessibili producono fascia non disponibile senza interrompere la guida. Non sono presenti prezzi simulati.
+## Italiano
 
-La revisione automatica aveva rifiutato l’esposizione pubblica dei dati di mercato in attesa di autorizzazione specifica. Questo nuovo flusso non aggira quel blocco.
+Interfaccia, paesi, formati comuni e descrizioni delle matrici sono localizzati. Titoli, nomi propri e codici rimangono originali. Le note pubbliche Discogs vengono inviate dal server al servizio gratuito MyMemory, solo mediante endpoint GET documentato; non vengono inviati token Discogs, ricerche dell’utente o dati personali.
 
-Termini e documentazione consultati: https://www.discogs.com/developers e https://support.discogs.com/hc/en-us/articles/360009334593-API-Terms-of-Use . Il catalogo testuale e gli identificativi sono distinti dai dati Marketplace soggetti a restrizioni. La pagina mantiene le attribuzioni richieste.
+Si traduce un estratto fino a 1100 caratteri per edizione (se più lungo è indicato). L’originale completo resta sempre consultabile. Indirizzi, riferimenti Discogs e codici presenti nelle note vengono sostituiti con segnaposto e ripristinati: se il traduttore altera un segnaposto, la traduzione non viene mostrata. Le note già riconoscibili come italiane non richiedono traduzione. La traduzione automatica assume inglese come lingua sorgente e può essere imprecisa: verificare l’originale.
+
+MyMemory: massimo 500 byte per richiesta, quota gratuita anonima dichiarata di 5000 caratteri/giorno. L’app suddivide in segmenti entro 450 byte, applica un tetto locale di 4500 caratteri al giorno per processo, memorizza le traduzioni per massimo 6 ore e 128 voci. La quota effettiva può essere condivisa sull’IP del provider. Quota esaurita o errore: messaggio esplicito e note originali disponibili, senza traduzioni inventate. Non vengono usati servizi a pagamento né inviate contribuzioni SET.
+
+Documentazione: https://mymemory.translated.net/doc/spec.php e https://mymemory.translated.net/doc/usagelimits.php . Dati Discogs: https://www.discogs.com/developers e https://support.discogs.com/hc/en-us/articles/360009334593-API-Terms-of-Use . Attribuzione nella pagina e accanto ai risultati.
 
 ## Avvio e test
 
-Python 3.12. Da questa cartella:
+Python 3.12. Dalla cartella del progetto:
 
 ```sh
 python -m venv .venv
@@ -44,21 +43,20 @@ export DISCOGS_TOKEN='solo-nell-ambiente-server'
 uvicorn app.main:app --reload
 ```
 
-Su PowerShell: `.venv\Scripts\Activate.ps1` e `$env:DISCOGS_TOKEN`. Il file `.env.example` documenta le variabili; non viene caricato automaticamente. Nessuna credenziale è salvata nei file.
+Su PowerShell usare `.venv\Scripts\Activate.ps1` e `$env:DISCOGS_TOKEN`. `.env.example` è documentazione e non viene caricato automaticamente. Nessuna credenziale è inclusa nei file.
 
 ```sh
 pip install -r requirements-dev.txt
 python -m pytest tests -q
+node --check app/static/app.js
 ```
 
-I test verificano date mancanti, selezione di candidate, repress coeve, preservazione di note/matrici, ricerca parziale, filtro paese, errori e assenza di chiamate Marketplace quando disattivate. Le fixture sintetiche restano nei test e non sono servite nell’app.
+22 test verificano regole UK/US/altro paese, territori composti senza doppioni, ricerca regionale quando il catalogo mondiale è parziale, assenza paesi non inventata, date mancanti, precedenza cronologica, URL copertine, preservazione codici/indirizzi, errore traduzione, rimozione ricerca fotografica, errori e assenza di chiamate Marketplace quando disattivate. Le fixture sintetiche sono solo nei test, mai nel prodotto.
 
-## Continuità e pubblicazione
+## Conservazione e pubblicazione
 
-Repository: https://github.com/Robb283/VINILI--app/tree/vinyl-price-check/vinyl-price-check . Il ramo principale resta indipendente. Le versioni precedenti sono conservate nella cronologia Git.
+Repository: https://github.com/Robb283/VINILI--app/tree/vinyl-price-check/vinyl-price-check . Il ramo principale resta indipendente; le versioni precedenti rimangono nella cronologia Git.
 
-Render: servizio `srv-dbotboe7bikc73a7lr4g`, workspace `tea-dbot87ec6qcc738memt0`, regione Frankfurt, piano gratuito. Build `pip install -r vinyl-price-check/requirements.txt`; start `cd vinyl-price-check && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1`. Questo servizio usa il repository pubblico tramite URL; le nuove versioni richiedono deploy manuale anche se è presente l’impostazione autoDeploy. Il `render.yaml` nella cartella è un esempio per eventuale repository autonomo, non la fonte delle variabili correnti.
+Render: servizio `srv-dbotboe7bikc73a7lr4g`, workspace `tea-dbot87ec6qcc738memt0`, Frankfurt, piano gratuito. Build `pip install -r vinyl-price-check/requirements.txt`; start `cd vinyl-price-check && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1`. Repository pubblico collegato via URL: le nuove versioni richiedono deploy manuale. Il render.yaml è un esempio per eventuale repository autonomo, non la fonte delle variabili correnti.
 
-Il piano gratuito può sospendersi dopo inattività e richiedere un primo caricamento più lungo. Cache volatile massima 5 minuti e 256 risposte; 20 richieste applicative/minuto per istanza, chiamate Discogs serializzate a distanza di 2,5 secondi. Non vengono salvati record di ricerca. Credenziali esclusivamente nell’ambiente server. Nessun database richiesto.
-
-Verifica 0.4: 16 test passati. Test reale Terry Allen master 93496: viene proposta la release 28863652 (US 1979), con indirizzo 63 West Ontario Street e fiore nei runout; il repress 1577402 è distinto nelle note. Durante il test Vasco è stato corretto un errore: il master di Fronte Del Palco rappresenta il CD pur avendo versioni originali in vinile. Il filtro Vinyl viene quindi applicato alle versioni, non alla ricerca degli album. Il confronto delle parole del titolo privilegia la corrispondenza diretta rispetto a risultati collegati nelle note.
+Cache Discogs volatile fino a 5 minuti / 256 risposte; 20 richieste applicative/minuto per istanza; upstream serializzato ogni 2,5 secondi. Usare un solo worker. Nessun database e nessun archivio di ricerche. Il piano gratuito può sospendersi dopo inattività, con un primo caricamento più lento. Le credenziali restano nell’ambiente server.
