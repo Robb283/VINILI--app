@@ -71,7 +71,8 @@ async function readPhoto(file) {
     // Skip obvious page controls / format metadata only in the proposed query.
     // Every detected line stays selectable: this is a heuristic, not identification.
     const metadata = /\b(?:\d+\s*[x×]?\s*LP|Repress|Reissue|Records\s*[-–—]|for sale|Collected|Wanted|Ratings|Last Sold|Lowest|Median|Highest|Discogs ID|TEST DOCUMENT)\b/i;
-    const proposed = lines.filter(line => !metadata.test(line)).slice(0, 2);
+    const isMarketplaceScreenshot = /\b(?:Discogs ID|for sale|Add to (?:Collection|Wantlist))\b/i.test(data.text);
+    const proposed = lines.filter(line => !metadata.test(line)).slice(0, isMarketplaceScreenshot ? 1 : 2);
     document.getElementById('query').value = proposed.join(' ').slice(0, 220);
     for (const [index, line] of lines.slice(0, 12).entries()) {
       const chip = document.createElement('button');
