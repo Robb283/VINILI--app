@@ -1,4 +1,4 @@
-# First Press — guide aux premières éditions / guida alle prime stampe
+# First Press — guida alle prime stampe
 
 Versione 0.4. La web app precedentemente chiamata Vinyl Price Check ora si concentra sull’individuazione delle prime stampe. Inserisci artista e titolo in un campo, o leggi il testo di una foto, e ottieni una guida con etichetta, catalogo, anno, paese, matrici e note distintive. Il paese è facoltativo. Il prezzo è secondario e compare solo se disponibile e attivato dal gestore.
 
@@ -60,3 +60,5 @@ Repository: https://github.com/Robb283/VINILI--app/tree/vinyl-price-check/vinyl-
 Render: servizio `srv-dbotboe7bikc73a7lr4g`, workspace `tea-dbot87ec6qcc738memt0`, regione Frankfurt, piano gratuito. Build `pip install -r vinyl-price-check/requirements.txt`; start `cd vinyl-price-check && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1`. Questo servizio usa il repository pubblico tramite URL; le nuove versioni richiedono deploy manuale anche se è presente l’impostazione autoDeploy. Il `render.yaml` nella cartella è un esempio per eventuale repository autonomo, non la fonte delle variabili correnti.
 
 Il piano gratuito può sospendersi dopo inattività e richiedere un primo caricamento più lungo. Cache volatile massima 5 minuti e 256 risposte; 20 richieste applicative/minuto per istanza, chiamate Discogs serializzate a distanza di 2,5 secondi. Non vengono salvati record di ricerca. Credenziali esclusivamente nell’ambiente server. Nessun database richiesto.
+
+Verifica 0.4: 16 test passati. Test reale Terry Allen master 93496: viene proposta la release 28863652 (US 1979), con indirizzo 63 West Ontario Street e fiore nei runout; il repress 1577402 è distinto nelle note. Durante il test Vasco è stato corretto un errore: il master di Fronte Del Palco rappresenta il CD pur avendo versioni originali in vinile. Il filtro Vinyl viene quindi applicato alle versioni, non alla ricerca degli album. Il confronto delle parole del titolo privilegia la corrispondenza diretta rispetto a risultati collegati nelle note.

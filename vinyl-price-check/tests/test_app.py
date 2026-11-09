@@ -54,7 +54,9 @@ def test_guide_fetches_catalogue_only_and_applies_country(monkeypatch):
     seen=[]
     async def fake(path, params=None, authenticated=True):
         seen.append((path,params))
-        if path=='/database/search': return {'results':[{'id':10,'title':'Artist - Album','year':1979}]}
+        if path=='/database/search':
+            assert 'format' not in params
+            return {'results':[{'id':10,'title':'Artist - Album','year':1979,'format':['CD']}]}
         if path=='/masters/10': return {'id':10,'title':'Album','year':1979,'artists':[{'name':'Artist'}]}
         if path=='/masters/10/versions':
             assert params['country']=='US'
@@ -99,3 +101,9 @@ def test_missing_token_and_whitespace():
     c=TestClient(m.app)
     assert c.get('/api/guide?q=Artist+Album').status_code==503
     assert c.get('/api/guide?q=%20%20').status_code==422
+
+
+def test_title_match_beats_related_album_notes():
+    query='Vasco Rossi Fronte del palco'
+    assert m.master_match_score(query,'Vasco Rossi - Fronte Del Palco - Live') > m.master_match_score(query,'Vasco - Vasco Live 10-7-90 San Siro')
+    assert m.master_match_score(query,'Vasco - Vasco Live 10-7-90 San Siro') < .55

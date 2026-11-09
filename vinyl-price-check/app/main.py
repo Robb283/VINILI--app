@@ -1,6 +1,7 @@
 import asyncio
 import math
 import re
+import unicodedata
 import os
 import time
 from collections import OrderedDict
@@ -166,16 +167,30 @@ async def optional_price(release_id):
             'reason': 'Suggerimenti Discogs in EUR per condizioni diverse (VG–NM), non intervallo delle vendite storiche. Copertina e spedizione escluse.'}
 
 
+def master_match_score(query, title):
+    def tokens(value):
+        value = unicodedata.normalize('NFKD', value.casefold())
+        words = set(re.findall(r'[a-z0-9]+', value))
+        return words - {'the', 'a', 'an', 'and', 'of', 'on', 'in', 'del', 'della', 'di', 'il', 'lo', 'la', 'le', 'i', 'gli'}
+    requested = tokens(query)
+    return len(requested & tokens(title)) / len(requested) if requested else 0
+
+
 @app.get('/api/guide')
 async def guide(q: str = Query(min_length=2, max_length=220), country: str = Query('', max_length=80),
                 master_id: int | None = Query(None, gt=0)):
     if len(q.strip()) < 2: raise HTTPException(422, 'Scrivi almeno artista e titolo, oppure usa una foto leggibile.')
     matches = []
     if master_id is None:
-        search = await discogs('/database/search', {'q': q.strip(), 'type': 'master', 'format': 'Vinyl', 'per_page': 10})
+        # A master can list CD as its representative format while having original
+        # vinyl versions. Filter Vinyl only on /versions, never on the album search.
+        search = await discogs('/database/search', {'q': q.strip(), 'type': 'master', 'per_page': 10})
         matches = [{k: r.get(k) for k in ('id', 'title', 'year')} for r in search.get('results', [])]
         if not matches:
             return {'found': False, 'reason': 'Nessun album trovato. Prova artista e titolo senza parole come “prima stampa”, oppure correggi il testo della foto.'}
+        matches.sort(key=lambda r: master_match_score(q, r.get('title') or ''), reverse=True)
+        if master_match_score(q, matches[0].get('title') or '') < .55:
+            return {'found': False, 'reason': 'I risultati citano il disco ma il titolo non corrisponde abbastanza. Prova “Artista - Titolo”, senza dettagli della stampa.'}
         master_id = matches[0]['id']
     master = await discogs(f'/masters/{master_id}', authenticated=False)
     versions, pages, total = [], 1, 0
