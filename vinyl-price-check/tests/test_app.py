@@ -1,130 +1,101 @@
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from app import main as m
 
 
 @pytest.fixture(autouse=True)
-def clear(monkeypatch):
-    m.cache.clear()
-    m.requests_window.clear()
+def clean(monkeypatch):
+    m.cache.clear(); m.requests_window.clear()
     monkeypatch.delenv('DISCOGS_TOKEN', raising=False)
     monkeypatch.delenv('ENABLE_MARKET_DATA', raising=False)
 
 
-def body(price=20, condition='VG+'):
-    return m.Assessment(release_id=1, asking_price=price, condition=condition, confirmed=True)
+@pytest.mark.parametrize('value,expected', [('1979',1979),('1979-00-00',1979),(1979,1979),('Unknown',None),('',None),('0000',None),('3000',None)])
+def test_real_dates_only(value, expected):
+    assert m.release_year(value) == expected
 
 
-@pytest.mark.parametrize('price,verdict', [(15,'Conveniente'),(16,'Corretto'),(24,'Corretto'),(25,'Troppo alto')])
-def test_thresholds(price, verdict):
-    d=m.evaluate(body(price), {'Very Good Plus (VG+)':{'value':20,'currency':'EUR'}}, {})
-    assert d['verdict']==verdict
-    assert d['confidence']=='Bassa'
-    assert d['market_value_range'] is None
+def test_earliest_year_does_not_prefer_repress_or_promo():
+    rows, chosen, earliest = m.rank_versions([
+        {'id':2,'released':'1979','format':'LP, Repress'},
+        {'id':3,'released':'1978','format':'LP, Promo'},
+        {'id':4,'released':'','format':'LP'},
+        {'id':1,'released':'1979','format':'LP, Album'},
+        {'id':5,'released':'1977','format':'CD','major_formats':['CD']},
+    ])
+    assert chosen['id'] == 1
+    assert earliest == 1979
+    assert len(rows) == 4
 
 
-def test_lowest_listing_is_never_a_valuation():
-    d=m.evaluate(body(), {}, {'lowest_price':{'value':1,'currency':'EUR'}})
-    assert d['verdict']=='Non valutabile'
-    assert d['reference'] is None
+def test_undated_is_not_certified():
+    _, _, earliest=m.rank_versions([{'id':1,'format':'LP','released':''}])
+    assert earliest is None
+    d=m.release_details({'id':1,'formats':[{'name':'Vinyl'}]}, earliest)
+    assert d['verdict']=='Prima stampa non determinabile'
 
 
-def test_no_currency_confusion():
-    d=m.evaluate(body(), {'Very Good Plus (VG+)':{'value':20,'currency':'USD'}}, {})
-    assert d['verdict']=='Non valutabile'
-    assert d['suggestions_range'] is None
+def test_notes_and_matrix_are_preserved_without_certifying():
+    d=m.release_details({'id':1,'year':1979,'formats':[{'name':'Vinyl','descriptions':['LP']}],
+                        'notes':'First issue address differs from [r2].',
+                        'identifiers':[{'type':'Matrix / Runout','value':'ABC A1','description':'Side A'}]},1979)
+    assert d['identifiers'][0]['value']=='ABC A1'
+    assert d['notes'].endswith('[r2].')
+    assert d['verdict']=='Candidata più precoce trovata'
+    assert d['confidence']=='Da verificare sulla copia'
 
 
-@pytest.mark.parametrize('v', [None, -1, 0, float('nan'), float('inf'), '25', True])
-def test_bad_money(v):
-    assert m.positive_eur({'value':v,'currency':'EUR'}) is None
+def test_repress_of_same_year_is_not_an_original():
+    d=m.release_details({'id':2,'year':1979,'formats':[{'name':'Vinyl','descriptions':['Repress']}]},1979)
+    assert d['verdict']=='Classificata come ristampa / repress'
 
 
-def test_missing_condition():
-    d=m.evaluate(body(condition=None), {'Very Good Plus (VG+)':{'value':20,'currency':'EUR'}}, {})
-    assert d['verdict']=='Non valutabile'
-
-
-def test_blocked_release():
-    d=m.evaluate(body(), {'Very Good Plus (VG+)':{'value':20,'currency':'EUR'}}, {'blocked_from_sale':True})
-    assert d['verdict']=='Non valutabile'
-
-
-def test_no_secrets_and_validation():
+def test_guide_fetches_catalogue_only_and_applies_country(monkeypatch):
+    seen=[]
+    async def fake(path, params=None, authenticated=True):
+        seen.append((path,params))
+        if path=='/database/search': return {'results':[{'id':10,'title':'Artist - Album','year':1979}]}
+        if path=='/masters/10': return {'id':10,'title':'Album','year':1979,'artists':[{'name':'Artist'}]}
+        if path=='/masters/10/versions':
+            assert params['country']=='US'
+            return {'versions':[{'id':1,'released':'1979','format':'LP'},{'id':2,'released':'1985','format':'LP, Reissue'}], 'pagination':{'pages':1,'items':2}}
+        if path=='/releases/1': return {'id':1,'master_id':10,'title':'Album','country':'US','year':1979,'formats':[{'name':'Vinyl'}], 'notes':'Check address.', 'lowest_price':999}
+        raise AssertionError('Unexpected endpoint: '+path)
+    monkeypatch.setattr(m,'discogs',fake)
     c=TestClient(m.app)
-    assert c.get('/').status_code==200
-    assert c.get('/api/health').json()['search_configured'] is False
-    assert c.get('/api/search?artist=Pink+Floyd&title=Animals').status_code==503
-    assert c.post('/api/assess',json={'release_id':1,'asking_price':-1}).status_code==422
-    assert c.post('/api/assess',json={'release_id':1,'asking_price':25}).status_code==422
+    d=c.get('/api/guide?q=Artist+Album&country=US').json()
+    assert d['found'] and d['guide']['id']==1
+    assert d['guide']['price']['available'] is False
+    assert 'lowest_price' not in d['guide']
+    assert not any('marketplace' in path for path,_ in seen)
+    assert d['scope']=='US'
+
+
+def test_truncated_search_is_visible(monkeypatch):
+    async def fake(path, params=None, authenticated=True):
+        if path=='/masters/10': return {'title':'Album','year':1979}
+        if '/versions' in path: return {'versions':[{'id':params['page'],'format':'LP','released':'1979'}], 'pagination':{'pages':5,'items':240}}
+        return {'id':1,'year':1979,'formats':[{'name':'Vinyl'}]}
+    monkeypatch.setattr(m,'discogs',fake)
+    d=TestClient(m.app).get('/api/guide?q=A&master_id=10').json()
+    # Query minimum length is checked before any Discogs call.
+    assert 'detail' in d
+    d=TestClient(m.app).get('/api/guide?q=AA&master_id=10').json()
+    assert d['partial'] and d['scanned']==3
+    assert 'parziale' in d['guide']['explanation']
+
+
+def test_no_results_and_no_secret_leak(monkeypatch):
+    async def fake(*args,**kwargs): return {'results':[]}
+    monkeypatch.setattr(m,'discogs',fake)
+    c=TestClient(m.app)
+    assert c.get('/api/guide?q=Unknown+Album').json()['found'] is False
     assert c.get('/.env').status_code==404
+    assert c.post('/api/assess',json={'asking_price':80}).status_code==404
+    assert c.get('/api/health').json()['mode']=='first_press_guide'
 
 
-def test_unavailable_suggestions_keep_real_stats(monkeypatch):
-    monkeypatch.setenv('ENABLE_MARKET_DATA','true')
-    async def fake(path, params=None, authenticated=True):
-        if path.startswith('/releases/'): return {'formats':[{'name':'Vinyl'}], 'title':'Test fixture'}
-        if 'stats' in path: return {'lowest_price':{'value':2,'currency':'EUR'}}
-        raise HTTPException(503,'Seller settings unavailable')
-    monkeypatch.setattr(m,'discogs',fake)
-    d=TestClient(m.app).post('/api/assess',json=body().model_dump()).json()
-    assert d['verdict']=='Non valutabile'
-    assert d['lowest_listing']==2
-    assert len(d['warnings'])==1
-
-
-def test_market_disabled(monkeypatch):
-    paths=[]
-    async def fake(path, params=None, authenticated=True):
-        paths.append(path)
-        return {'formats':[{'name':'Vinyl'}]}
-    monkeypatch.setattr(m,'discogs',fake)
-    d=TestClient(m.app).post('/api/assess',json=body().model_dump()).json()
-    assert d['verdict']=='Non valutabile'
-    assert paths==['/releases/1']
-
-
-def test_reissue_filter_and_first_press_warning(monkeypatch):
-    async def fake(*args,**kwargs):
-        return {'results':[{'id':1,'format':['Vinyl','Reissue']},{'id':2,'format':['Vinyl']}], 'pagination':{'pages':2}}
-    monkeypatch.setattr(m,'discogs',fake)
+def test_missing_token_and_whitespace():
     c=TestClient(m.app)
-    d=c.get('/api/search?artist=A&title=B&pressing=reissue').json()
-    assert [r['id'] for r in d['results']]==[1]
-    assert c.get('/api/search?artist=A&title=B&pressing=first').json()['warning']
-
-
-def test_single_query_for_typed_or_photo_text(monkeypatch):
-    seen = []
-    async def fake(path, params=None, authenticated=True):
-        seen.append(params)
-        return {'results': [], 'pagination': {}}
-    monkeypatch.setattr(m, 'discogs', fake)
-    c = TestClient(m.app)
-    assert c.get('/api/search?q=Terry+Allen+Lubbock+on+Everything').status_code == 200
-    assert seen[0]['q'] == 'Terry Allen Lubbock on Everything'
-    assert 'artist' not in seen[0]
-    assert seen[0]['format'] == 'Vinyl'
-    assert c.get('/api/search?q=%20%20').status_code == 422
-    assert c.get('/api/search?q=' + 'a' * 221).status_code == 422
-
-
-def test_condition_comparisons_use_distinct_real_references():
-    d = m.evaluate(body(price=30, condition=None), {
-        'Good (G)': {'value': 5, 'currency': 'EUR'},
-        'Very Good Plus (VG+)': {'value': 25, 'currency': 'EUR'},
-        'Near Mint (NM or M-)': {'value': 40, 'currency': 'EUR'},
-    }, {'lowest_price': {'value': 1, 'currency': 'EUR'}})
-    assert [c['reference'] for c in d['comparisons']] == [5, 25, 40]
-    assert [c['verdict'] for c in d['comparisons']] == ['Troppo alto', 'Corretto', 'Conveniente']
-
-
-def test_missing_condition_reference_is_not_invented():
-    d = m.evaluate(body(condition=None), {'Mint (M)': {'value': 100, 'currency': 'EUR'}}, {})
-    assert all(c['reference'] is None and c['verdict'] == 'Non valutabile' for c in d['comparisons'])
-
-
-def test_blocked_release_has_no_condition_recommendations():
-    d = m.evaluate(body(condition=None), {'Good (G)': {'value': 10, 'currency': 'EUR'}}, {'blocked_from_sale': True})
-    assert all(c['reference'] is None for c in d['comparisons'])
+    assert c.get('/api/guide?q=Artist+Album').status_code==503
+    assert c.get('/api/guide?q=%20%20').status_code==422

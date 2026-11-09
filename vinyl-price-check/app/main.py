@@ -1,25 +1,19 @@
 import asyncio
 import math
+import re
 import os
 import time
 from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
 
-CONDITIONS = {
-    'M': 'Mint (M)', 'NM': 'Near Mint (NM or M-)',
-    'VG+': 'Very Good Plus (VG+)', 'VG': 'Very Good (VG)',
-    'G+': 'Good Plus (G+)', 'G': 'Good (G)', 'F': 'Fair (F)', 'P': 'Poor (P)',
-}
-app = FastAPI(title='Vinyl Price Check', version='0.1.0')
+app = FastAPI(title='First Press — guida alle prime stampe', version='0.4.0')
 static = Path(__file__).parent / 'static'
 app.mount('/static', StaticFiles(directory=static), name='static')
 cache = OrderedDict()
@@ -53,7 +47,7 @@ async def discogs(path: str, params=None, authenticated=True):
     now = time.monotonic()
     if key in cache and now - cache[key][0] < 300:
         return cache[key][1]
-    headers = {'User-Agent': os.getenv('DISCOGS_USER_AGENT', 'VinylPriceCheck/0.1')}
+    headers = {'User-Agent': os.getenv('DISCOGS_USER_AGENT', 'FirstPress/0.4')}
     if token:
         headers['Authorization'] = 'Discogs token=' + token
     # One upstream request at a time, <= 24/minute. No rotating keys or retries.
@@ -68,7 +62,7 @@ async def discogs(path: str, params=None, authenticated=True):
     if r.status_code == 429:
         raise HTTPException(429, 'Limite Discogs raggiunto. Attendi un minuto e riprova.', headers={'Retry-After': '60'})
     if r.status_code in (401, 403):
-        raise HTTPException(503, 'Discogs non autorizza questo accesso. Il gestore deve verificare credenziale e impostazioni venditore.')
+        raise HTTPException(503, 'Discogs non autorizza questo accesso. Il gestore deve verificare credenziale Discogs.')
     if r.status_code == 404:
         raise HTTPException(404, 'Edizione non trovata su Discogs.')
     if r.status_code != 200:
@@ -91,108 +85,134 @@ async def index():
 
 @app.get('/api/health')
 async def health():
-    return {'status': 'ok', 'search_configured': bool(os.getenv('DISCOGS_TOKEN')),
-            'market_data_enabled': os.getenv('ENABLE_MARKET_DATA') == 'true'}
+    return {'status': 'ok', 'search_configured': bool(os.getenv('DISCOGS_TOKEN')), 'mode': 'first_press_guide'}
 
 
-@app.get('/api/search')
-async def search(artist: str = Query('', max_length=150),
-                 title: str = Query('', max_length=150),
-                 country: str = Query('', max_length=80),
-                 catno: str = Query('', max_length=80),
-                 pressing: Literal['any', 'first', 'reissue'] = 'any',
-                 page: int = Query(1, ge=1, le=50),
-                 q: str = Query('', max_length=220)):
-    if not q.strip() and (not artist.strip() or not title.strip()):
-        raise HTTPException(422, 'Scrivi artista e album nel campo di ricerca, oppure usa una foto con testo leggibile.')
-    params = {'type': 'release', 'format': 'Vinyl', 'per_page': 20, 'page': page}
-    if q.strip():
-        params['q'] = q.strip()
+def release_year(value):
+    match = re.match(r'^(\d{4})(?:$|[-/])', str(value or ''))
+    year = int(match.group(1)) if match else None
+    return year if year and 1900 <= year <= datetime.now().year + 1 else None
+
+
+def version_info(item):
+    text = item.get('format') or ''
+    if isinstance(text, list): text = ', '.join(text)
+    reissue = bool(re.search(r'\b(?:Reissue|Repress)\b', text, re.I))
+    special = bool(re.search(r'\b(?:Unofficial|Promo|Test Pressing|Acetate)\b', text, re.I))
+    return {key: item.get(key) for key in ('id', 'title', 'country', 'catno', 'label', 'released')} | {
+        'year': release_year(item.get('released')), 'format': text,
+        'reissue': reissue, 'special': special,
+        'source_url': f"https://www.discogs.com/release/{item['id']}"}
+
+
+def rank_versions(versions):
+    rows = [version_info(v) for v in versions if not v.get('major_formats') or 'Vinyl' in v['major_formats']]
+    rows.sort(key=lambda v: (v['year'] or 9999, v['reissue'], v['special'], str(v.get('released') or ''), v['id']))
+    eligible = [v for v in rows if v['year'] and not v['reissue'] and not v['special']]
+    chosen = eligible[0] if eligible else (rows[0] if rows else None)
+    earliest = eligible[0]['year'] if eligible else None
+    return rows, chosen, earliest
+
+
+def release_details(data, earliest=None, partial=False):
+    formats = data.get('formats', [])
+    if not any(f.get('name') == 'Vinyl' for f in formats):
+        raise HTTPException(422, 'Questa edizione non è in vinile.')
+    descriptions = [s for f in formats for s in f.get('descriptions', [])]
+    row = version_info({'id': data['id'], 'format': descriptions, 'released': data.get('released') or data.get('year')})
+    if row['reissue']:
+        verdict = 'Classificata come ristampa / repress'
+        explanation = 'Discogs riporta Reissue o Repress. Non usarla come riferimento automatico per una prima tiratura.'
+    elif row['special']:
+        verdict = 'Edizione speciale da verificare'
+        explanation = 'Promo, test pressing o edizione non ufficiale: non equivale automaticamente alla prima edizione commerciale.'
+    elif earliest and row['year'] and row['year'] > earliest:
+        verdict = 'Più recente delle candidate trovate'
+        explanation = f'Nel gruppo esaminato sono presenti candidate datate {earliest}. Questa edizione è datata {row["year"]}.'
+    elif earliest and row['year'] == earliest:
+        verdict = 'Candidata più precoce trovata'
+        explanation = 'Anno e classificazione sono compatibili con le candidate più precoci esaminate. Per distinguere le tirature dello stesso anno servono etichette, matrici e note.'
     else:
-        params.update(artist=artist.strip(), release_title=title.strip())
-    if country.strip(): params['country'] = country.strip()
-    if catno.strip(): params['catno'] = catno.strip()
-    data = await discogs('/database/search', params)
-    results = []
-    for r in data.get('results', []):
-        if pressing == 'reissue' and 'Reissue' not in r.get('format', []):
-            continue
-        results.append({k: r.get(k) for k in ('id', 'title', 'year', 'country', 'catno', 'label', 'format')})
-    return {'results': results, 'pagination': {k: data.get('pagination', {}).get(k) for k in ('page', 'pages', 'items')},
-            'warning': 'Prima stampa non certificabile dalla sola ricerca: confronta anno, etichetta, catalogo e matrici.' if pressing == 'first' else 'Solo edizioni marcate Reissue nella pagina corrente. Le altre pagine possono contenere altre ristampe.' if pressing == 'reissue' else None}
+        verdict = 'Prima stampa non determinabile'
+        explanation = 'Le informazioni disponibili non permettono di proporre una prima tiratura con sufficiente fondamento.'
+    if partial: explanation += ' La ricerca delle versioni è parziale.'
+    identifiers = [{k: x.get(k, '') for k in ('type', 'value', 'description')} for x in data.get('identifiers', [])]
+    return {'id': data['id'], 'title': data.get('title'), 'country': data.get('country'),
+            'year': data.get('year'), 'released': data.get('released'),
+            'labels': [{'name': x.get('name'), 'catno': x.get('catno')} for x in data.get('labels', [])],
+            'formats': formats, 'identifiers': identifiers, 'notes': data.get('notes') or '',
+            'companies': [{'name': x.get('name'), 'role': x.get('entity_type_name')} for x in data.get('companies', [])],
+            'verdict': verdict, 'explanation': explanation, 'confidence': 'Da verificare sulla copia',
+            'source_url': f"https://www.discogs.com/release/{data['id']}"}
 
 
-class Assessment(BaseModel):
-    release_id: int = Field(gt=0)
-    asking_price: float = Field(gt=0, le=1_000_000, allow_inf_nan=False)
-    condition: Literal['M', 'NM', 'VG+', 'VG', 'G+', 'G', 'F', 'P'] | None = None
-    confirmed: bool = False
-
-
-def positive_eur(value):
-    if not isinstance(value, dict) or value.get('currency') != 'EUR': return None
-    v = value.get('value')
-    if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0:
-        return round(v, 2)
-    return None
-
-
-def evaluate(body: Assessment, suggestions: dict, stats: dict):
-    prices = {k: positive_eur(suggestions.get(v)) for k, v in CONDITIONS.items()}
-    values = [v for v in prices.values() if v is not None]
-    reference = prices.get(body.condition)
-    verdict, confidence = 'Non valutabile', 'Insufficiente'
-    reason = 'Non ci sono suggerimenti di prezzo in euro per la condizione indicata.'
-    if body.condition is None:
-        reason = 'Indica le condizioni del vinile per confrontare prezzi omogenei.'
-    elif reference is not None:
-        ratio = body.asking_price / reference
-        verdict = 'Conveniente' if ratio < .8 else 'Troppo alto' if ratio > 1.2 else 'Corretto'
-        confidence = 'Bassa'
-        reason = 'Confronto indicativo con il suggerimento Discogs per questa condizione; non è una stima basata su vendite comparabili verificate.'
-    if stats.get('blocked_from_sale'):
-        verdict, confidence, reason = 'Non valutabile', 'Insufficiente', 'Edizione bloccata alla vendita su Discogs.'
-    comparisons = []
-    for code, label in [('G', 'Usurato'), ('VG+', 'Buono'), ('NM', 'Ottimo')]:
-        target = None if stats.get('blocked_from_sale') else prices.get(code)
-        comparison_verdict = 'Non valutabile'
-        if target is not None:
-            ratio = body.asking_price / target
-            comparison_verdict = 'Conveniente' if ratio < .8 else 'Troppo alto' if ratio > 1.2 else 'Corretto'
-        comparisons.append({'condition': code, 'label': label, 'reference': target,
-                            'verdict': comparison_verdict})
-    return {'verdict': verdict, 'confidence': confidence, 'reason': reason,
-            'comparisons': comparisons,
-            'reference': reference, 'condition': body.condition,
-            'suggestions_range': [min(values), max(values)] if len(values) >= 2 else None,
-            'range_label': 'Estremi dei suggerimenti Discogs tra condizioni diverse, da P a M. Non è un intervallo di vendite né il valore della tua copia.',
-            'market_value_range': None, 'suggestions': prices,
-            'lowest_listing': positive_eur(stats.get('lowest_price')),
-            'num_for_sale': stats.get('num_for_sale'),
-            'method': 'Sotto l’80% del suggerimento: conveniente; sopra il 120%: troppo alto; altrimenti corretto. Soglie scelte dall’app, non da Discogs. Copertina, spedizione e autenticità non sono valutate.'}
-
-
-@app.post('/api/assess')
-async def assess(body: Assessment):
-    if not body.confirmed:
-        raise HTTPException(422, 'Conferma l’edizione confrontando i dati con la tua copia.')
-    release = await discogs(f'/releases/{body.release_id}', authenticated=False)
-    if not any(f.get('name') == 'Vinyl' for f in release.get('formats', [])):
-        raise HTTPException(422, 'L’edizione selezionata non è in vinile.')
-    result = {'release': {'id': body.release_id, 'title': release.get('title'),
-                         'year': release.get('year'), 'country': release.get('country')},
-              'source_url': f'https://www.discogs.com/release/{body.release_id}',
-              'checked_at': datetime.now(timezone.utc).isoformat(), 'currency': 'EUR'}
+async def optional_price(release_id):
+    # Independent optional feature. It cannot block the catalogue guide.
     if os.getenv('ENABLE_MARKET_DATA') != 'true':
-        return result | evaluate(body, {}, {}) | {'reason': 'Dati di mercato disattivati dal gestore. Nessuna stima viene inventata.'}
-    warnings = []
-    stats, suggestions = {}, {}
-    for name, path, params in [('stats', f'/marketplace/stats/{body.release_id}', {'curr_abbr': 'EUR'}),
-                               ('suggestions', f'/marketplace/price_suggestions/{body.release_id}', None)]:
-        try:
-            data = await discogs(path, params, authenticated=name == 'suggestions')
-            if name == 'stats': stats = data
-            else: suggestions = data
-        except HTTPException as e:
-            warnings.append(f'{name}: {e.detail}')
-    return result | evaluate(body, suggestions, stats) | {'warnings': warnings}
+        return {'available': False, 'reason': 'Fascia prezzo non disponibile. La guida alla stampa resta utilizzabile.'}
+    try:
+        data = await discogs(f'/marketplace/price_suggestions/{release_id}')
+    except HTTPException:
+        return {'available': False, 'reason': 'Discogs non restituisce prezzi utilizzabili per questa edizione.'}
+    values = {}
+    for code, name in [('VG', 'Very Good (VG)'), ('VG+', 'Very Good Plus (VG+)'), ('NM', 'Near Mint (NM or M-)')]:
+        item = data.get(name, {})
+        if not isinstance(item, dict): continue
+        value = item.get('value')
+        if item.get('currency') == 'EUR' and isinstance(value, (float, int)) and not isinstance(value, bool) and math.isfinite(value) and value > 0:
+            values[code] = round(value, 2)
+    return {'available': bool(values), 'by_condition': values,
+            'range': [min(values.values()), max(values.values())] if len(values) >= 2 else None,
+            'reason': 'Suggerimenti Discogs in EUR per condizioni diverse (VG–NM), non intervallo delle vendite storiche. Copertina e spedizione escluse.'}
+
+
+@app.get('/api/guide')
+async def guide(q: str = Query(min_length=2, max_length=220), country: str = Query('', max_length=80),
+                master_id: int | None = Query(None, gt=0)):
+    if len(q.strip()) < 2: raise HTTPException(422, 'Scrivi almeno artista e titolo, oppure usa una foto leggibile.')
+    matches = []
+    if master_id is None:
+        search = await discogs('/database/search', {'q': q.strip(), 'type': 'master', 'format': 'Vinyl', 'per_page': 10})
+        matches = [{k: r.get(k) for k in ('id', 'title', 'year')} for r in search.get('results', [])]
+        if not matches:
+            return {'found': False, 'reason': 'Nessun album trovato. Prova artista e titolo senza parole come “prima stampa”, oppure correggi il testo della foto.'}
+        master_id = matches[0]['id']
+    master = await discogs(f'/masters/{master_id}', authenticated=False)
+    versions, pages, total = [], 1, 0
+    for page in range(1, 4):
+        params = {'format': 'Vinyl', 'sort': 'released', 'sort_order': 'asc', 'per_page': 50, 'page': page}
+        if country.strip(): params['country'] = country.strip()
+        result = await discogs(f'/masters/{master_id}/versions', params, authenticated=False)
+        versions.extend(result.get('versions', []))
+        pages = result.get('pagination', {}).get('pages', 1)
+        total = result.get('pagination', {}).get('items', len(versions))
+        if page >= pages: break
+    partial = pages > 3
+    rows, chosen, earliest = rank_versions(versions)
+    # Keep the proposed edition visible even when very many undated/special variants exist.
+    shown = rows[:30]
+    if chosen and chosen not in shown: shown.insert(0, chosen)
+    details = None
+    if chosen:
+        data = await discogs(f"/releases/{chosen['id']}", authenticated=False)
+        details = release_details(data, earliest, partial)
+        details['price'] = await optional_price(chosen['id'])
+    return {'found': True, 'master': {'id': master_id, 'title': master.get('title'),
+            'artist': ', '.join(x.get('name', '') for x in master.get('artists', [])),
+            'year': master.get('year'), 'source_url': f'https://www.discogs.com/master/{master_id}'},
+            'matches': matches, 'scope': country.strip() or 'Tutti i paesi', 'earliest_candidate_year': earliest,
+            'candidates': shown, 'scanned': len(rows), 'total': total, 'partial': partial,
+            'guide': details, 'checked_at': datetime.now(timezone.utc).isoformat(),
+            'limitation': 'Il catalogo è collaborativo e può essere incompleto. Anno più antico, numero di catalogo e assenza del flag Reissue non certificano una prima stampa. Il paese cambia il significato di “prima”.'}
+
+
+@app.get('/api/releases/{release_id}')
+async def release(release_id: int, master_id: int = Query(gt=0), country: str = Query('', max_length=80)):
+    if release_id <= 0: raise HTTPException(422, 'Edizione non valida.')
+    context = await guide(q='edizione', country=country, master_id=master_id)
+    data = await discogs(f'/releases/{release_id}', authenticated=False)
+    if data.get('master_id') != master_id:
+        raise HTTPException(422, 'Questa edizione non appartiene all’album selezionato.')
+    details = release_details(data, context['earliest_candidate_year'], context['partial'])
+    details['price'] = await optional_price(release_id)
+    return details
