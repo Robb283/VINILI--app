@@ -62,3 +62,7 @@ Render: servizio `srv-dbotboe7bikc73a7lr4g`, workspace `tea-dbot87ec6qcc738memt0
 Cache Discogs volatile fino a 5 minuti / 256 risposte; 20 richieste applicative/minuto per istanza; upstream serializzato ogni 2,5 secondi. Usare un solo worker. Nessun database e nessun archivio di ricerche. Il piano gratuito può sospendersi dopo inattività, con un primo caricamento più lento. Le credenziali restano nell’ambiente server.
 
 Quando il traduttore non è disponibile, un estrattore locale può fornire una sintesi esplicitamente etichettata: riconosce soltanto affermazioni presenti nelle note (indirizzi di prima stampa/repress, fiore nei runout, copertina apribile/lucida, buste interne, errori di stampa, licenza). Non è una traduzione completa e non inventa caratteristiche assenti. L’originale rimane consultabile. Questa sintesi non invia dati a servizi esterni e non dipende dalla quota del traduttore.
+
+## Versione 0.6 — immagini ingrandibili
+
+Clic sulla copertina o su una miniatura: visualizzatore a schermo intero con zoom da adattamento a 4×, scorrimento sui dettagli, frecce per le immagini della stessa edizione, doppio clic per passare da adattamento a 2×, pulsante Chiudi ed Esc. Il dialogo nativo mantiene la navigazione da tastiera e ripristina il focus alla chiusura. La foto viene usata con l’URL originale fornito dall’API: nessuna ricostruzione o aumento artificiale della risoluzione.
