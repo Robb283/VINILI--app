@@ -104,3 +104,17 @@ def test_camera_removed_and_no_secrets():
 def test_title_match():
     q='Vasco Rossi Fronte del palco'
     assert m.master_match_score(q,'Vasco Rossi - Fronte Del Palco - Live')>m.master_match_score(q,'Vasco - Vasco Live 10-7-90 San Siro')
+
+def test_italian_fallback_preserves_distinguishing_features():
+    note='First pressing with 63 West Ontario Street address on rear jacket. Later repress of [r1577402] has 215 W. Superior address.\nThis first pressing also has a flower etched in the runouts.'
+    d=tr.italian_summary(note)
+    assert d['status']=='summary'
+    assert 'Prima stampa: indirizzo «63 West Ontario Street»' in d['text']
+    assert 'Ristampa successiva: indirizzo «215 W. Superior»' in d['text']
+    assert 'fiore inciso' in d['text']
+    assert tr.italian_summary('An unrelated note.')['status']=='unavailable'
+
+def test_negative_repress_flower_is_not_presented_as_present():
+    d=tr.italian_summary('Repress also does not have a flower etched in the runouts.')
+    assert 'La ristampa non presenta' in d['text']
+    assert 'La prima stampa presenta' not in d['text']

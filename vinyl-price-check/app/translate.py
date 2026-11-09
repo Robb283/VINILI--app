@@ -42,6 +42,27 @@ def split_bytes(text, maximum=450):
     return parts
 
 
+def italian_summary(notes):
+    """Extract explicit catalogue statements; never infer missing characteristics."""
+    points = []
+    first = re.search(r'first pressing with (.+?) address', notes, re.I)
+    later = re.search(r'(?:later|subsequent) (?:repress|reissue)[^\n]*?\b(?:has|with) (.+?) address', notes, re.I)
+    if first: points.append(f'Prima stampa: indirizzo «{first[1]}» sul retrocopertina.')
+    if later: points.append(f'Ristampa successiva: indirizzo «{later[1]}».')
+    if re.search(r'this first pressing[^\n]*?\bhas a flower[^\n]*?runouts?', notes, re.I):
+        points.append('La prima stampa presenta un fiore inciso nei solchi finali.')
+    if re.search(r'repress[^\n]*?(?:does not|doesn.t|without)[^\n]*?flower', notes, re.I):
+        points.append('La ristampa non presenta il fiore inciso nei solchi finali.')
+    if re.search(r'\bgatefold\b', notes, re.I): points.append('Copertina apribile.')
+    if re.search(r'\bglossy cover\b', notes, re.I): points.append('Copertina lucida.')
+    if re.search(r'\bembossed[^\n]*?cover', notes, re.I): points.append('Copertina con elementi in rilievo.')
+    if re.search(r'\bmisprint\b', notes, re.I): points.append('Le note segnalano un errore di stampa: confronta il testo originale per identificarlo.')
+    if re.search(r'\binner sleeve', notes, re.I): points.append('Le note descrivono anche le buste interne; confrontale con la tua copia.')
+    licensed = re.search(r'released under licen[cs]e from ([^\n]+)', notes, re.I)
+    if licensed: points.append(f'Pubblicata su licenza di {licensed[1].rstrip(".")}.')
+    return {'text': '\n'.join(points), 'status': 'summary' if points else 'unavailable', 'excerpt': True}
+
+
 async def translate_notes(notes, identifiers=()):
     global _budget_day, _budget_used
     if not notes.strip(): return {'text': '', 'status': 'empty', 'excerpt': False}
@@ -60,7 +81,7 @@ async def translate_notes(notes, identifiers=()):
         async with _budget_lock:
             if date.today() != _budget_day: _budget_day, _budget_used = date.today(), 0
             if _budget_used + len(encoded) > 4500:
-                return {'text': '', 'status': 'unavailable', 'excerpt': excerpt}
+                return italian_summary(notes)
             _budget_used += len(encoded)
         try:
             chunks = split_bytes(encoded)
@@ -80,7 +101,7 @@ async def translate_notes(notes, identifiers=()):
             _cache[key] = (time.monotonic(), translated)
             while len(_cache) > 128: _cache.popitem(last=False)
         except (httpx.HTTPError, ValueError, TypeError, KeyError):
-            return {'text': '', 'status': 'unavailable', 'excerpt': excerpt}
+            return italian_summary(notes)
     # Correct recurrent machine-translation errors in record terminology before
     # restoring protected labels, addresses and identifiers.
     corrections = [(r'\bpressatura\b', 'stampa'), (r'\bspremitura\b', 'stampa'),
