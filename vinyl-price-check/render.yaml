@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: vinyl-price-check
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /api/health
+    envVars:
+      - key: DISCOGS_TOKEN
+        sync: false
+      - key: ENABLE_MARKET_DATA
+        value: "false"
+      - key: PYTHON_VERSION
+        value: "3.12.8"
