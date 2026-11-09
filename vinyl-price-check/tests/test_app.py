@@ -108,3 +108,23 @@ def test_single_query_for_typed_or_photo_text(monkeypatch):
     assert seen[0]['format'] == 'Vinyl'
     assert c.get('/api/search?q=%20%20').status_code == 422
     assert c.get('/api/search?q=' + 'a' * 221).status_code == 422
+
+
+def test_condition_comparisons_use_distinct_real_references():
+    d = m.evaluate(body(price=30, condition=None), {
+        'Good (G)': {'value': 5, 'currency': 'EUR'},
+        'Very Good Plus (VG+)': {'value': 25, 'currency': 'EUR'},
+        'Near Mint (NM or M-)': {'value': 40, 'currency': 'EUR'},
+    }, {'lowest_price': {'value': 1, 'currency': 'EUR'}})
+    assert [c['reference'] for c in d['comparisons']] == [5, 25, 40]
+    assert [c['verdict'] for c in d['comparisons']] == ['Troppo alto', 'Corretto', 'Conveniente']
+
+
+def test_missing_condition_reference_is_not_invented():
+    d = m.evaluate(body(condition=None), {'Mint (M)': {'value': 100, 'currency': 'EUR'}}, {})
+    assert all(c['reference'] is None and c['verdict'] == 'Non valutabile' for c in d['comparisons'])
+
+
+def test_blocked_release_has_no_condition_recommendations():
+    d = m.evaluate(body(condition=None), {'Good (G)': {'value': 10, 'currency': 'EUR'}}, {'blocked_from_sale': True})
+    assert all(c['reference'] is None for c in d['comparisons'])

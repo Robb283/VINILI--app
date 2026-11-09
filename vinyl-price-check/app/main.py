@@ -152,7 +152,17 @@ def evaluate(body: Assessment, suggestions: dict, stats: dict):
         reason = 'Confronto indicativo con il suggerimento Discogs per questa condizione; non è una stima basata su vendite comparabili verificate.'
     if stats.get('blocked_from_sale'):
         verdict, confidence, reason = 'Non valutabile', 'Insufficiente', 'Edizione bloccata alla vendita su Discogs.'
+    comparisons = []
+    for code, label in [('G', 'Usurato'), ('VG+', 'Buono'), ('NM', 'Ottimo')]:
+        target = None if stats.get('blocked_from_sale') else prices.get(code)
+        comparison_verdict = 'Non valutabile'
+        if target is not None:
+            ratio = body.asking_price / target
+            comparison_verdict = 'Conveniente' if ratio < .8 else 'Troppo alto' if ratio > 1.2 else 'Corretto'
+        comparisons.append({'condition': code, 'label': label, 'reference': target,
+                            'verdict': comparison_verdict})
     return {'verdict': verdict, 'confidence': confidence, 'reason': reason,
+            'comparisons': comparisons,
             'reference': reference, 'condition': body.condition,
             'suggestions_range': [min(values), max(values)] if len(values) >= 2 else None,
             'range_label': 'Estremi dei suggerimenti Discogs tra condizioni diverse, da P a M. Non è un intervallo di vendite né il valore della tua copia.',

@@ -96,3 +96,9 @@ Il riconoscimento visivo generale, distinto dall’OCR, richiederebbe un modello
 Il gate dei dati di mercato pubblici resta disattivato come nel rilascio precedente. Questa modifica non lo aggira.
 
 Verifica 0.2: 20 test backend passati. Prova browser sul servizio Render: una foto di prova con scritte Terry Allen / Lubbock viene letta realmente dall’OCR; selezionando artista e titolo la ricerca restituisce sei edizioni su Discogs. Le prime due righe lette sono proposte automaticamente, le altre sono selezionabili. La prova verifica la lettura del testo e la ricerca, non un riconoscimento visivo generale o la correttezza di una stampa fisica. I test non attivano il gate dei dati di mercato pubblici.
+
+## Versione 0.3 — confronto per condizioni
+
+Il risultato comprende tre riferimenti indipendenti: Usurato (G), Buono (VG+), Ottimo (NM). Per ciascuno il prezzo suggerito da Discogs viene confrontato con quello richiesto, anche senza compilare le condizioni prima della ricerca. Le tre cifre non sono derivate dal minimo delle offerte o da percentuali inventate. Un suggerimento mancante resta Non valutabile. Affidabilità bassa e soglie applicative esplicite.
+
+L’attivazione pubblica è stata nuovamente rifiutata dalla revisione automatica: richiede un’autorizzazione esplicita alla pubblicazione dei dati di mercato dopo l’indicazione delle restrizioni d’uso. Il flag ENABLE_MARKET_DATA resta false. Il codice di confronto è pronto e verificabile, senza aggirare quel blocco.
