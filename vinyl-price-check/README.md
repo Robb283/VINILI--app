@@ -111,3 +111,8 @@ Errori OAuth, permessi Browse, quote, timeout e risultati insufficienti sono dis
 ### Verifica reale eBay
 
 Dopo l’attivazione del keyset Production tramite esenzione Marketplace Account Deletion, OAuth e Browse rispondono correttamente. Le prove reali includono Love — Love US 1966, Pink Floyd — The Dark Side Of The Moon Italy 1973 e Terry Allen — Lubbock (On Everything) US 1979. La fascia resta assente quando i confronti verificabili sono meno di tre. Correzioni emerse dal traffico reale: gli album omonimi richiedono un riferimento all’album o al catalogo, per escludere altri titoli della stessa band; un paese alternativo esplicitamente indicato come pressing viene escluso.
+
+
+## Versione 0.13 — prezzo richiesto
+
+Campo facoltativo in euro, con virgola o punto decimale. Il valore rimane nel browser, non è inviato alle API eBay/Discogs o al server. Per ciascuna edizione confronta il prezzo con la fascia centrale e la mediana dei soli annunci compatibili in EUR: sotto, in linea o sopra la fascia, solo con almeno tre confronti. Nessuna soglia o prezzo simulato. Con uno/due annunci mostra un confronto limitato e la differenza in euro/percentuale per ciascun annuncio, senza verdetto complessivo. Spedizione esclusa, condizioni da confrontare. Modificare o svuotare il prezzo aggiorna i confronti senza rifare la ricerca; il campo vuoto conserva la guida esistente. Annunci non verificati o in altre valute sono esclusi dal confronto.

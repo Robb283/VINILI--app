@@ -25,13 +25,35 @@ function formatMoney(value){return new Intl.NumberFormat('it-IT',{style:'currenc
 async function loadOffers(releaseId,container,searchGeneration){
  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),55000);
  try{const response=await fetch('/api/offers/'+releaseId,{signal:controller.signal});if(!response.ok)throw new Error();const data=await response.json();if(searchGeneration!==generation||!container.isConnected)return;
- container.replaceChildren(node('h4','Copie in vendita · eBay'));
+ container.offerData=data;container.replaceChildren(node('h4','Copie in vendita · eBay'));const comparison=node('div',null,'requested-comparison');comparison.setAttribute('role','status');container.append(comparison);renderRequestedComparison(comparison,data);
  if(data.status!=='ok'){container.append(node('p',data.message||'Annunci momentaneamente non disponibili.','market-note'));return;}
  const price=data.price||{};
  if(price.available){container.append(node('p',formatMoney({value:price.low,currency:price.currency})+' – '+formatMoney({value:price.high,currency:price.currency}),'market-range'),node('p','Prezzi richiesti · '+price.count+' annunci compatibili · affidabilità '+price.confidence.toLowerCase(),'market-note'));const method=node('details');method.append(node('summary','Come leggere la fascia'),node('p',price.reason+' '+price.condition));container.append(method);}
  else container.append(node('p',price.reason||'Fascia prezzo non disponibile.','market-note'));
- if(data.items?.length){const listings=node('div',null,'offer-list');for(const item of data.items){const link=node('a',null,'offer');link.href=item.url;link.target='_blank';link.rel='noopener noreferrer';if(item.image){const img=node('img');img.src=item.image;img.alt='Foto della copia in vendita';img.loading='lazy';img.referrerPolicy='no-referrer';img.onerror=()=>{img.hidden=true;};link.append(img);}const content=node('div',null,'offer-content');content.append(node('span',item.title,'offer-title'),node('strong',formatMoney(item.price),'offer-price'));content.append(node('span',item.shipping?'Spedizione: '+formatMoney(item.shipping):'Spedizione da verificare su eBay','offer-meta'));const condition=[item.record_grading?'Vinile: '+item.record_grading:item.condition,item.sleeve_grading?'Copertina: '+item.sleeve_grading:''].filter(Boolean).join(' · ');content.append(node('span',condition,'offer-meta'),node('span',item.compatibility==='compatible'?'Compatibile · controlla foto e matrici':'Edizione da verificare','offer-match'),node('span','Vedi annuncio ↗','offer-action'));link.title=item.note;link.append(content);listings.append(link);}container.append(listings);}
+ if(data.items?.length){const listings=node('div',null,'offer-list');for(const item of data.items){const link=node('a',null,'offer');link.href=item.url;link.target='_blank';link.rel='noopener noreferrer';if(item.image){const img=node('img');img.src=item.image;img.alt='Foto della copia in vendita';img.loading='lazy';img.referrerPolicy='no-referrer';img.onerror=()=>{img.hidden=true;};link.append(img);}const content=node('div',null,'offer-content');content.append(node('span',item.title,'offer-title'),node('strong',formatMoney(item.price),'offer-price'));content.append(node('span',item.shipping?'Spedizione: '+formatMoney(item.shipping):'Spedizione da verificare su eBay','offer-meta'));const condition=[item.record_grading?'Vinile: '+item.record_grading:item.condition,item.sleeve_grading?'Copertina: '+item.sleeve_grading:''].filter(Boolean).join(' · ');content.append(node('span',condition,'offer-meta'),node('span',item.compatibility==='compatible'?'Compatibile · controlla foto e matrici':'Edizione da verificare','offer-match'),node('span','Vedi annuncio ↗','offer-action'));const difference=node('span',null,'offer-difference');difference.offerData=item;renderOfferDifference(difference,item);content.append(difference);link.title=item.note;link.append(content);listings.append(link);}container.append(listings);}
  else container.append(node('p',data.message,'market-note'));
  const note=node('p',null,'market-note');const date=new Intl.DateTimeFormat('it-IT',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(data.checked_at));note.textContent='Annunci attivi, non vendite concluse · '+date+(data.partial?' · campione parziale':'')+'.';container.append(note);
  }catch(error){if(searchGeneration===generation&&container.isConnected){container.replaceChildren(node('h4','Copie in vendita · eBay'),node('p',error.name==='AbortError'?'eBay sta impiegando troppo tempo. Riprova più tardi.':'Annunci momentaneamente non disponibili.','market-note'));}}finally{clearTimeout(timer);}
 }
+
+function requestedPrice(){return FirstPressPrices.parse($('asked-price').value);}
+function renderRequestedComparison(container,data){
+ container.replaceChildren();const asked=requestedPrice();const result=FirstPressPrices.compare(asked,data);container.hidden=!result;container.className='requested-comparison';if(!result)return;
+ if(result.state==='invalid'){container.append(node('p','Inserisci un prezzo valido in euro.','market-note'));return;}
+ container.classList.add('comparison-'+result.state);
+ const titles={below:'Sotto la fascia degli annunci',inline:'In linea con gli annunci',above:'Sopra la fascia degli annunci',limited:'Confronto limitato',unavailable:'Prezzo non confrontabile'};
+ container.append(node('p',titles[result.state],'comparison-verdict'),node('p','Prezzo richiesto: '+formatMoney({value:asked,currency:'EUR'}),'comparison-asked'));
+ if(['above','below','inline'].includes(result.state)){
+  const delta=result.medianDifference;const text=delta===null?'Confronto con la fascia centrale degli annunci compatibili.':delta===0?'Uguale alla mediana degli annunci compatibili.':(delta>0?'+':'')+delta+'% rispetto alla mediana degli annunci compatibili.';
+  container.append(node('p',text,'market-note'),node('p','Indicativo: condizioni miste e spedizione esclusa. Confronta vinile e copertina.','market-note'));
+ }else container.append(node('p',result.count?'Solo '+result.count+' '+(result.count===1?'annuncio compatibile':'annunci compatibili')+': guarda le differenze sui singoli prezzi. Servono almeno 3 confronti per un verdetto sulla fascia.':'Nessun prezzo compatibile in euro disponibile per il confronto.','market-note'));
+}
+function renderOfferDifference(container,item){
+ const difference=FirstPressPrices.difference(requestedPrice(),item);container.hidden=!difference;container.textContent='';if(!difference)return;
+ const amount=formatMoney({value:Math.abs(difference.euros),currency:'EUR'});container.textContent=difference.direction==='equal'?'Uguale al prezzo richiesto': 'Il prezzo inserito è '+amount+(difference.direction==='above'?' in più':' in meno')+' ('+(difference.percent>0?'+':'')+difference.percent+'%) rispetto a questo annuncio.';
+}
+$('asked-price').addEventListener('input',()=>{
+ const amount=requestedPrice();$('asked-price').setCustomValidity(Number.isNaN(amount)?'Inserisci un prezzo maggiore di zero, con al massimo due decimali.':'');
+ document.querySelectorAll('.market-section').forEach(container=>{const target=container.querySelector('.requested-comparison');if(target&&container.offerData)renderRequestedComparison(target,container.offerData);});
+ document.querySelectorAll('.offer-difference').forEach(container=>renderOfferDifference(container,container.offerData));
+});
