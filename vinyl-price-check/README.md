@@ -81,3 +81,8 @@ Rimossi menu laterale, banner e riquadri introduttivi. La pagina si apre diretta
 ## Versione 0.9 — paese facoltativo
 
 Il selettore Paese lascia come valore predefinito Automatico (più vecchia mondiale + US/UK). Se specificato, `/api/guide?country=Italy` cerca direttamente le versioni di quel paese e restituisce una sola candidata; non aggiunge US/UK né ripiega su un altro paese in assenza di risultati. Controllo locale del paese sui risultati upstream, incluse edizioni multiterritorio. Ricerca parziale e date mancanti restano esplicite.
+
+
+## Versione 0.10 — ricerca per territorio
+
+Paesi in inglese, elenco ampliato e aggiornato anche con i territori effettivamente restituiti da Discogs per l’album. La ricerca nazionale consulta le faccette paese e comprende i territori combinati compatibili (ad esempio US include USA & Canada). Le richieste a Discogs usano ciascun valore esatto della fonte; candidati verificati localmente e deduplicati prima della selezione cronologica. Restano esclusi gli altri paesi. Il limite è due pagine per territorio, fino a otto territori compatibili; se superato viene segnalata la ricerca parziale.

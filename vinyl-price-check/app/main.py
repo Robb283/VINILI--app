@@ -179,11 +179,17 @@ def master_match_score(query, title):
 
 
 
+def country_key(value):
+    value = str(value or '').strip().casefold()
+    return {'usa': 'us', 'united states': 'us', 'united states of america': 'us',
+            'united kingdom': 'uk', 'great britain': 'uk'}.get(value, value)
+
+
 def country_matches(country, region):
     value = str(country or '').strip()
-    if value.casefold() == region.casefold(): return True
+    if country_key(value) == country_key(region): return True
     parts = re.split(r'\s*(?:&|,|/|;|\band\b)\s*', value, flags=re.I)
-    return any(part.casefold() == region.casefold() for part in parts)
+    return any(country_key(part) == country_key(region) for part in parts)
 
 
 def release_images(data):
@@ -198,17 +204,36 @@ def release_images(data):
 
 
 async def scan_versions(master_id, country=''):
-    versions, pages, total = [], 1, 0
-    for page in range(1, 3):
-        params = {'format': 'Vinyl', 'sort': 'released', 'sort_order': 'asc', 'per_page': 100, 'page': page}
-        if country: params['country'] = country
-        data = await discogs(f'/masters/{master_id}/versions', params, authenticated=False)
-        versions.extend(data.get('versions', []))
-        pages = data.get('pagination', {}).get('pages', 1)
-        total = data.get('pagination', {}).get('items', len(versions))
-        if page >= pages: break
-    rows, chosen, earliest = rank_versions(versions)
-    return {'rows': rows, 'chosen': chosen, 'earliest': earliest, 'partial': pages > 2, 'total': total}
+    base = {'format': 'Vinyl', 'sort': 'released', 'sort_order': 'asc'}
+    available = []
+    variants = [country] if country else ['']
+    if country:
+        # Discogs filters country by exact facet: UK excludes "UK & Europe".
+        # Inspect the actual territories for this album, then query each match.
+        metadata = await discogs(f'/masters/{master_id}/versions',
+                                 base | {'per_page': 1, 'page': 1}, authenticated=False)
+        facets = metadata.get('filters', {}).get('available', {}).get('country')
+        if isinstance(facets, dict):
+            available = list(facets)
+            variants = [value for value in available if country_matches(value, country)]
+    versions, partial, total = [], len(variants) > 8, 0
+    for variant in variants[:8]:
+        for page in range(1, 3):
+            params = base | {'per_page': 100, 'page': page}
+            if variant: params['country'] = variant
+            data = await discogs(f'/masters/{master_id}/versions', params, authenticated=False)
+            if not available:
+                available = list(data.get('filters', {}).get('available', {}).get('country', {}))
+            batch = data.get('versions', [])
+            versions.extend(row for row in batch if not country or country_matches(row.get('country'), country))
+            pages = data.get('pagination', {}).get('pages', 1)
+            if page == 1: total += data.get('pagination', {}).get('items', len(batch))
+            partial = partial or pages > 2
+            if page >= pages: break
+    unique = {row['id']: row for row in versions}
+    rows, chosen, earliest = rank_versions(unique.values())
+    return {'rows': rows, 'chosen': chosen, 'earliest': earliest, 'partial': partial,
+            'total': total, 'available_countries': available}
 
 
 def select_country_companions(primary, rows):
@@ -256,12 +281,14 @@ async def guide(q: str = Query(min_length=2, max_length=220), master_id: int | N
         _, chosen, earliest = rank_versions([row for row in regional['rows'] if country_matches(row.get('country'), country)])
         if not chosen:
             return {'found': False, 'country': country, 'partial': regional['partial'],
+                    'available_countries': regional['available_countries'],
                     'reason': f'Nessuna edizione in vinile trovata per {country} nel catalogo esaminato.' + (' Ricerca parziale.' if regional['partial'] else '')}
         edition = await enrich_edition(chosen, 'country', earliest, regional['partial'])
         return {'found': True, 'master': {'id': master_id, 'title': master.get('title'),
                 'artist': ', '.join(x.get('name', '') for x in master.get('artists', [])),
                 'year': master.get('year'), 'source_url': f'https://www.discogs.com/master/{master_id}'},
                 'matches': matches, 'editions': [edition], 'country': country,
+                'available_countries': regional['available_countries'],
                 'missing_regions': [], 'warnings': [], 'partial': regional['partial'],
                 'checked_at': datetime.now(timezone.utc).isoformat(),
                 'limitation': 'Edizione commerciale datata più vecchia trovata per il paese scelto. Il catalogo può essere incompleto; più tirature possono condividere lo stesso anno.'}
@@ -299,5 +326,6 @@ async def guide(q: str = Query(min_length=2, max_length=220), master_id: int | N
             'artist': ', '.join(x.get('name', '') for x in master.get('artists', [])),
             'year': master.get('year'), 'source_url': f'https://www.discogs.com/master/{master_id}'},
             'matches': matches, 'editions': editions, 'missing_regions': missing, 'warnings': warnings,
+            'available_countries': worldwide['available_countries'],
             'partial': worldwide['partial'], 'checked_at': datetime.now(timezone.utc).isoformat(),
             'limitation': 'Edizioni commerciali datate più vecchie trovate su Discogs; il catalogo può essere incompleto. Più tirature possono condividere lo stesso anno.'}

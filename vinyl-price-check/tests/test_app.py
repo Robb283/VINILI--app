@@ -131,7 +131,7 @@ def test_requested_country_only_uses_dedicated_scan(monkeypatch,country,expected
         ident=int(path.rsplit('/',1)[1]);return {'id':ident,'country':country,'year':1970,'formats':[{'name':'Vinyl'}]}
     monkeypatch.setattr(m,'discogs',fake)
     d=TestClient(m.app).get('/api/guide',params={'q':'Artist Album','master_id':10,'country':country}).json()
-    assert scans==[country]
+    assert scans==[None,country]
     assert [e['id'] for e in d['editions']]==[expected]
     assert d['country']==country and d['editions'][0]['role']=='country'
     assert not d['missing_regions']
@@ -155,3 +155,33 @@ def test_requested_country_keeps_partial_scan_warning(monkeypatch):
     monkeypatch.setattr(m,'discogs',fake)
     d=TestClient(m.app).get('/api/guide?q=Album&master_id=10&country=France').json()
     assert d['partial'] and d['editions'][0]['partial']
+
+@pytest.mark.parametrize('value,region,expected',[
+ ('USA & Canada','US',True),('UK & Europe','UK',True),('UK & US','US',True),
+ ('Australia','Austria',False),('USSR','US',False),('Europe','Italy',False)])
+def test_country_territory_aliases(value,region,expected):
+    assert m.country_matches(value,region)==expected
+
+
+def test_country_facets_include_older_combined_territory(monkeypatch):
+    requested=[]
+    async def fake(path,params=None,authenticated=True):
+        if params.get('per_page')==1:
+            return {'filters':{'available':{'country':{'US':3,'USA & Canada':1,'UK':2}}}}
+        requested.append(params['country'])
+        rows=[v(1,'US',1980),v(2,'USA & Canada',1970)] if params['country']=='USA & Canada' else [v(1,'US',1980)]
+        return {'versions':rows,'pagination':{'pages':1,'items':len(rows)}}
+    monkeypatch.setattr(m,'discogs',fake)
+    d=asyncio.run(m.scan_versions(10,'US'))
+    assert requested==['US','USA & Canada']
+    assert d['chosen']['id']==2 and d['earliest']==1970
+    assert len(d['rows'])==2
+
+
+def test_absent_country_facets_prevent_false_positive(monkeypatch):
+    async def fake(path,params=None,authenticated=True):
+        assert params.get('per_page')==1
+        return {'filters':{'available':{'country':{'UK':3,'US':5}}}}
+    monkeypatch.setattr(m,'discogs',fake)
+    d=asyncio.run(m.scan_versions(10,'Italy'))
+    assert not d['chosen'] and d['available_countries']==['UK','US']
