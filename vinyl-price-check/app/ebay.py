@@ -150,7 +150,9 @@ def assess(item, edition):
     if re.search(r'\b(?:cd|cassette|dvd|sacd|blu ray|lot|bundle|lotto|poster)\b', norm(title + ' ' + format_value)): return None
     if re.search(r'\b(?:cover only|sleeve only|no record|senza disco|record lot|records lot|box set)\b', norm(title)): return None
     artist_text = title + ' ' + aspect_value(data, ['Artist', 'Artista', 'Performer'])
-    album_text = title + ' ' + aspect_value(data, ['Release Title', 'Album', 'Titolo'])
+    declared_album = aspect_value(data, ['Release Title', 'Album', 'Titolo'])
+    if declared_album and not contains(declared_album, edition.get('title')): return None
+    album_text = title + ' ' + declared_album
     if not contains(artist_text, edition.get('artist')) or not contains(album_text, edition.get('title')): return None
     formats = ' '.join(f.get('name', '') + ' ' + ' '.join(f.get('descriptions', [])) for f in edition.get('formats', []))
     vinyl = any(contains(format_value + ' ' + title, word) for word in ['vinyl', 'LP', '33 rpm', '33 giri'])
@@ -162,13 +164,23 @@ def assess(item, edition):
     countries = aspect_value(data, ['Country/Region of Manufacture', 'Country of Origin', 'Country', 'Paese di fabbricazione'])
     aliases = country_aliases(edition.get('country', ''))
     if countries and not any(contains(countries, c) for c in aliases): return None
+    # A different explicitly named pressing is not merely missing country data.
+    for other in ['US', 'UK', 'Germany', 'Italy', 'France', 'Japan', 'Canada', 'Australia', 'Netherlands']:
+        explicit = re.search(r'(?<![a-z0-9])' + re.escape(norm(other)) + r'\s+(?:pressing|press|issue|edition)\b', norm(title))
+        if explicit and other != edition.get('country'):
+            if not any(contains(other, alias) for alias in aliases): return None
     catalogues = [x.get('catno', '') for x in edition.get('labels', []) if compact(x.get('catno')) not in ('', 'none', 'unknown')]
     cat_aspect = aspect_value(data, ['Catalog Number', 'Catalogue Number', 'Numero di catalogo'])
     if cat_aspect and catalogues and not any(catalogue_matches(cat_aspect, c) for c in catalogues): return None
+    catalogue_known = any(catalogue_matches(title + ' ' + cat_aspect, c) for c in catalogues)
+    if norm(edition.get('artist')) == norm(edition.get('title')):
+        occurrences = len(re.findall(r'(?<![a-z0-9])' + re.escape(norm(edition['title'])) + r'(?![a-z0-9])', norm(title)))
+        self_titled = contains(title, 'self titled') or contains(title, 'selftitled')
+        if occurrences < 2 and not catalogue_known and not self_titled and not declared_album: return None
     if not any('Reissue' in f.get('descriptions', []) or 'Repress' in f.get('descriptions', []) for f in edition.get('formats', [])):
         if re.search(r'\b(?:reissue|repress|remastered|ristampa)\b', norm(title + ' ' + aspect_value(data, ['Edition']))): return None
     evidence = {
-        'catalogue': any(catalogue_matches(title + ' ' + cat_aspect, c) for c in catalogues),
+        'catalogue': catalogue_known,
         'year': bool(year and year in re.findall(r'\b\d{4}\b', title + ' ' + years)),
         'country': any(contains(title + ' ' + countries, c) for c in aliases) if aliases[0] else False,
         'format': True,

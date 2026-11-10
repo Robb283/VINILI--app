@@ -106,3 +106,8 @@ L’annuncio è classificato compatibile solo con riferimenti espliciti a catalo
 Fascia solo con almeno 3 inserzioni distinte compatibili in EUR, intervallo centrale 25°–75° percentile e mediana disponibili nell’API. È una fascia di prezzi richiesti nel campione, condizioni miste e spedizione esclusa; non valore certificato, non vendite concluse. Nessuno sconto stimato per condizioni sconosciute. Ogni annuncio mostra condizioni dichiarate, spedizione quando fornita da eBay e link alla fonte. Cache volatile 5 minuti, massimo 128 ricerche, concorrenza eBay 3; nessun archivio persistente.
 
 Errori OAuth, permessi Browse, quote, timeout e risultati insufficienti sono distinti senza esporre la risposta riservata upstream. Credenziali valide possono comunque richiedere abilitazione Browse Production da parte di eBay. Documentazione: https://developer.ebay.com/develop/api/buy/browse_api e https://developer.ebay.com/api-docs/master/buy/browse/openapi/3/buy_browse_v1_oas3.json
+
+
+### Verifica reale eBay
+
+Dopo l’attivazione del keyset Production tramite esenzione Marketplace Account Deletion, OAuth e Browse rispondono correttamente. Le prove reali includono Love — Love US 1966, Pink Floyd — The Dark Side Of The Moon Italy 1973 e Terry Allen — Lubbock (On Everything) US 1979. La fascia resta assente quando i confronti verificabili sono meno di tre. Correzioni emerse dal traffico reale: gli album omonimi richiedono un riferimento all’album o al catalogo, per escludere altri titoli della stessa band; un paese alternativo esplicitamente indicato come pressing viene escluso.
