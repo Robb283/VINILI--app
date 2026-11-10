@@ -71,3 +71,8 @@ Clic sulla copertina o su una miniatura: visualizzatore a schermo intero con zoo
 ## Versione 0.7 — grafica Vinyl Room
 
 Interfaccia scura con accenti arancioni e crema, menu laterale e schede coordinate. Artista e titolo album hanno due campi obbligatori separati; la ricerca invia i valori uniti all’API esistente. Su smartphone il menu diventa orizzontale e i campi si dispongono in colonna. Foto ingrandibili e matrici apribili sono conservate. Nessun cambiamento all’integrazione dei prezzi.
+
+
+## Versione 0.8 — interfaccia essenziale
+
+Rimossi menu laterale, banner e riquadri introduttivi. La pagina si apre direttamente su artista, titolo e pulsante Cerca. I limiti della ricerca e il metodo sono consultabili in sezioni richiudibili; avvisi e dati mancanti restano visibili nei risultati. Conservati colori, foto ingrandibili e matrici a scomparsa.
