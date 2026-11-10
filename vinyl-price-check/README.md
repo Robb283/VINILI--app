@@ -76,3 +76,8 @@ Interfaccia scura con accenti arancioni e crema, menu laterale e schede coordina
 ## Versione 0.8 — interfaccia essenziale
 
 Rimossi menu laterale, banner e riquadri introduttivi. La pagina si apre direttamente su artista, titolo e pulsante Cerca. I limiti della ricerca e il metodo sono consultabili in sezioni richiudibili; avvisi e dati mancanti restano visibili nei risultati. Conservati colori, foto ingrandibili e matrici a scomparsa.
+
+
+## Versione 0.9 — paese facoltativo
+
+Il selettore Paese lascia come valore predefinito Automatico (più vecchia mondiale + US/UK). Se specificato, `/api/guide?country=Italy` cerca direttamente le versioni di quel paese e restituisce una sola candidata; non aggiunge US/UK né ripiega su un altro paese in assenza di risultati. Controllo locale del paese sui risultati upstream, incluse edizioni multiterritorio. Ricerca parziale e date mancanti restano esplicite.

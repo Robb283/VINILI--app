@@ -180,7 +180,10 @@ def master_match_score(query, title):
 
 
 def country_matches(country, region):
-    return region in re.findall(r'[A-Z]{2,}', str(country or ''))
+    value = str(country or '').strip()
+    if value.casefold() == region.casefold(): return True
+    parts = re.split(r'\s*(?:&|,|/|;|\band\b)\s*', value, flags=re.I)
+    return any(part.casefold() == region.casefold() for part in parts)
 
 
 def release_images(data):
@@ -234,7 +237,7 @@ async def enrich_edition(row, role, earliest, partial):
 
 
 @app.get('/api/guide')
-async def guide(q: str = Query(min_length=2, max_length=220), master_id: int | None = Query(None, gt=0)):
+async def guide(q: str = Query(min_length=2, max_length=220), master_id: int | None = Query(None, gt=0), country: str = Query('', max_length=80)):
     if len(q.strip()) < 2: raise HTTPException(422, 'Scrivi artista e titolo.')
     matches = []
     if master_id is None:
@@ -246,6 +249,22 @@ async def guide(q: str = Query(min_length=2, max_length=220), master_id: int | N
             return {'found': False, 'reason': 'Il titolo non corrisponde abbastanza. Prova “Artista - Titolo”.'}
         master_id = matches[0]['id']
     master = await discogs(f'/masters/{master_id}', authenticated=False)
+    country = country.strip()
+    if country:
+        regional = await scan_versions(master_id, country)
+        # Keep the country boundary even if the upstream returns unrelated rows.
+        _, chosen, earliest = rank_versions([row for row in regional['rows'] if country_matches(row.get('country'), country)])
+        if not chosen:
+            return {'found': False, 'country': country, 'partial': regional['partial'],
+                    'reason': f'Nessuna edizione in vinile trovata per {country} nel catalogo esaminato.' + (' Ricerca parziale.' if regional['partial'] else '')}
+        edition = await enrich_edition(chosen, 'country', earliest, regional['partial'])
+        return {'found': True, 'master': {'id': master_id, 'title': master.get('title'),
+                'artist': ', '.join(x.get('name', '') for x in master.get('artists', [])),
+                'year': master.get('year'), 'source_url': f'https://www.discogs.com/master/{master_id}'},
+                'matches': matches, 'editions': [edition], 'country': country,
+                'missing_regions': [], 'warnings': [], 'partial': regional['partial'],
+                'checked_at': datetime.now(timezone.utc).isoformat(),
+                'limitation': 'Edizione commerciale datata più vecchia trovata per il paese scelto. Il catalogo può essere incompleto; più tirature possono condividere lo stesso anno.'}
     worldwide = await scan_versions(master_id)
     primary = worldwide['chosen']
     if not primary:

@@ -118,3 +118,40 @@ def test_negative_repress_flower_is_not_presented_as_present():
     d=tr.italian_summary('Repress also does not have a flower etched in the runouts.')
     assert 'La ristampa non presenta' in d['text']
     assert 'La prima stampa presenta' not in d['text']
+
+@pytest.mark.parametrize('country,expected',[('Italy',2),('UK',4)])
+def test_requested_country_only_uses_dedicated_scan(monkeypatch,country,expected):
+    scans=[]
+    async def fake(path,params=None,authenticated=True):
+        if path=='/masters/10':return {'title':'Album','artists':[{'name':'Artist'}]}
+        if '/versions' in path:
+            scans.append(params.get('country'))
+            # Includes an unrelated earlier edition to exercise the country boundary.
+            return {'versions':[v(1,'US',1960),v(2,'Italy',1970),v(3,'Italy',1980),v(4,'UK & Europe',1971)],'pagination':{'pages':1}}
+        ident=int(path.rsplit('/',1)[1]);return {'id':ident,'country':country,'year':1970,'formats':[{'name':'Vinyl'}]}
+    monkeypatch.setattr(m,'discogs',fake)
+    d=TestClient(m.app).get('/api/guide',params={'q':'Artist Album','master_id':10,'country':country}).json()
+    assert scans==[country]
+    assert [e['id'] for e in d['editions']]==[expected]
+    assert d['country']==country and d['editions'][0]['role']=='country'
+    assert not d['missing_regions']
+
+
+def test_missing_requested_country_does_not_fall_back(monkeypatch):
+    async def fake(path,params=None,authenticated=True):
+        if path=='/masters/10':return {'title':'Album'}
+        if '/versions' in path:return {'versions':[v(1,'US',1970)],'pagination':{'pages':1}}
+        raise AssertionError('An unrelated release must not be enriched')
+    monkeypatch.setattr(m,'discogs',fake)
+    d=TestClient(m.app).get('/api/guide?q=Album&master_id=10&country=Japan').json()
+    assert not d['found'] and d['country']=='Japan'
+
+
+def test_requested_country_keeps_partial_scan_warning(monkeypatch):
+    async def fake(path,params=None,authenticated=True):
+        if path=='/masters/10':return {'title':'Album'}
+        if '/versions' in path:return {'versions':[v(1,'France',1970)],'pagination':{'pages':3}}
+        return {'id':1,'country':'France','year':1970,'formats':[{'name':'Vinyl'}]}
+    monkeypatch.setattr(m,'discogs',fake)
+    d=TestClient(m.app).get('/api/guide?q=Album&master_id=10&country=France').json()
+    assert d['partial'] and d['editions'][0]['partial']
