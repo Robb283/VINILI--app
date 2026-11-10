@@ -66,3 +66,8 @@ Quando il traduttore non è disponibile, un estrattore locale può fornire una s
 ## Versione 0.6 — immagini ingrandibili
 
 Clic sulla copertina o su una miniatura: visualizzatore a schermo intero con zoom da adattamento a 4×, scorrimento sui dettagli, frecce per le immagini della stessa edizione, doppio clic per passare da adattamento a 2×, pulsante Chiudi ed Esc. Il dialogo nativo mantiene la navigazione da tastiera e ripristina il focus alla chiusura. La foto viene usata con l’URL originale fornito dall’API: nessuna ricostruzione o aumento artificiale della risoluzione.
+
+
+## Versione 0.7 — grafica Vinyl Room
+
+Interfaccia scura con accenti arancioni e crema, menu laterale e schede coordinate. Artista e titolo album hanno due campi obbligatori separati; la ricerca invia i valori uniti all’API esistente. Su smartphone il menu diventa orizzontale e i campi si dispongono in colonna. Foto ingrandibili e matrici apribili sono conservate. Nessun cambiamento all’integrazione dei prezzi.
