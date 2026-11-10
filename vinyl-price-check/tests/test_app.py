@@ -185,3 +185,18 @@ def test_absent_country_facets_prevent_false_positive(monkeypatch):
     monkeypatch.setattr(m,'discogs',fake)
     d=asyncio.run(m.scan_versions(10,'Italy'))
     assert not d['chosen'] and d['available_countries']==['UK','US']
+
+
+def test_album_search_prefers_original_over_live_and_tribute(monkeypatch):
+    async def fake(path,params=None,authenticated=True):
+        if path=='/database/search':return {'results':[
+            {'id':2,'title':'Pink Floyd - The Dark Side Of The Moon (Live At Wembley 1974)','year':2023},
+            {'id':3,'title':'Various - Return To The Dark Side Of The Moon (A Tribute To Pink Floyd)','year':2006},
+            {'id':1,'title':'Pink Floyd - The Dark Side Of The Moon','year':1973}]}
+        if path=='/masters/1':return {'title':'The Dark Side Of The Moon','artists':[{'name':'Pink Floyd'}]}
+        if path=='/masters/1/versions':return {'versions':[v(10,'Italy',1973)],'pagination':{'pages':1}}
+        if path=='/releases/10':return {'id':10,'country':'Italy','year':1973,'formats':[{'name':'Vinyl'}]}
+        raise AssertionError('Wrong album selected: '+path)
+    monkeypatch.setattr(m,'discogs',fake)
+    d=TestClient(m.app).get('/api/guide',params={'q':'Pink Floyd — The Dark Side of the Moon','country':'Italy'}).json()
+    assert d['found'] and d['master']['id']==1 and d['editions'][0]['country']=='Italy'

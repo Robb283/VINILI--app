@@ -86,3 +86,5 @@ Il selettore Paese lascia come valore predefinito Automatico (più vecchia mondi
 ## Versione 0.10 — ricerca per territorio
 
 Paesi in inglese, elenco ampliato e aggiornato anche con i territori effettivamente restituiti da Discogs per l’album. La ricerca nazionale consulta le faccette paese e comprende i territori combinati compatibili (ad esempio US include USA & Canada). Le richieste a Discogs usano ciascun valore esatto della fonte; candidati verificati localmente e deduplicati prima della selezione cronologica. Restano esclusi gli altri paesi. Il limite è due pagine per territorio, fino a otto territori compatibili; se superato viene segnalata la ricerca parziale.
+
+La scelta dell’album confronta anche le parole aggiuntive: un live, un demo o un tributo che contengono il titolo non hanno più lo stesso punteggio dell’album cercato. A parità di corrispondenza viene preferito il master più antico datato.

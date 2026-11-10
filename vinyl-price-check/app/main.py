@@ -175,7 +175,8 @@ def master_match_score(query, title):
         words = set(re.findall(r'[a-z0-9]+', value))
         return words - {'the', 'a', 'an', 'and', 'of', 'on', 'in', 'del', 'della', 'di', 'il', 'lo', 'la', 'le', 'i', 'gli'}
     requested = tokens(query)
-    return len(requested & tokens(title)) / len(requested) if requested else 0
+    candidate = tokens(title)
+    return 2 * len(requested & candidate) / (len(requested) + len(candidate)) if requested and candidate else 0
 
 
 
@@ -269,7 +270,7 @@ async def guide(q: str = Query(min_length=2, max_length=220), master_id: int | N
         search = await discogs('/database/search', {'q': q.strip(), 'type': 'master', 'per_page': 10})
         matches = [{k: r.get(k) for k in ('id', 'title', 'year')} for r in search.get('results', [])]
         if not matches: return {'found': False, 'reason': 'Nessun album trovato. Prova artista e titolo senza altri dettagli.'}
-        matches.sort(key=lambda r: master_match_score(q, r.get('title') or ''), reverse=True)
+        matches.sort(key=lambda r: (-master_match_score(q, r.get('title') or ''), release_year(r.get('year')) or 9999, r['id']))
         if master_match_score(q, matches[0].get('title') or '') < .55:
             return {'found': False, 'reason': 'Il titolo non corrisponde abbastanza. Prova “Artista - Titolo”.'}
         master_id = matches[0]['id']
