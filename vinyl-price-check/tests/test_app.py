@@ -200,3 +200,28 @@ def test_album_search_prefers_original_over_live_and_tribute(monkeypatch):
     monkeypatch.setattr(m,'discogs',fake)
     d=TestClient(m.app).get('/api/guide',params={'q':'Pink Floyd — The Dark Side of the Moon','country':'Italy'}).json()
     assert d['found'] and d['master']['id']==1 and d['editions'][0]['country']=='Italy'
+
+@pytest.mark.parametrize('artist,album,source_artist',[
+ ('Love','Love','Love (2)'),('Black Sabbath','Black Sabbath','Black Sabbath'),
+ ('Bad Company','Bad Company','Bad Company (3)'),('Manuel Gottsching','E2-E4','Manuel Göttsching')])
+def test_separate_artist_and_album_search(monkeypatch,artist,album,source_artist):
+    async def fake(path,params=None,authenticated=True):
+        if path=='/database/search':
+            assert params['artist']==artist and params['release_title']==album
+            assert 'q' not in params
+            return {'results':[
+                {'id':2,'title':f'Another Artist - {album}','year':1960},
+                {'id':3,'title':f'{source_artist} - {album} Live','year':1970},
+                {'id':1,'title':f'{source_artist} - {album}','year':1966}]}
+        if path=='/masters/1':return {'title':album,'artists':[{'name':source_artist}]}
+        if path=='/masters/1/versions':return {'versions':[v(10,'US',1966)],'pagination':{'pages':1}}
+        if path=='/releases/10':return {'id':10,'country':'US','year':1966,'formats':[{'name':'Vinyl'}]}
+        raise AssertionError('Wrong album chosen: '+path)
+    monkeypatch.setattr(m,'discogs',fake)
+    d=TestClient(m.app).get('/api/guide',params={'q':f'{artist} — {album}','artist':artist,'album':album,'country':'US'}).json()
+    assert d['found'] and d['master']['id']==1 and d['editions'][0]['id']==10
+
+
+def test_short_common_title_does_not_match_another_artist():
+    assert m.master_match_score('Love — Love','Another Artist - Love','Love','Love')==0
+    assert m.master_match_score('Love — Love','Love (2) - Love','Love','Love')==1

@@ -169,15 +169,26 @@ async def optional_price(release_id):
             'reason': 'Suggerimenti Discogs in EUR per condizioni diverse (VG–NM), non intervallo delle vendite storiche. Copertina e spedizione escluse.'}
 
 
-def master_match_score(query, title):
-    def tokens(value):
-        value = unicodedata.normalize('NFKD', value.casefold())
-        words = set(re.findall(r'[a-z0-9]+', value))
-        return words - {'the', 'a', 'an', 'and', 'of', 'on', 'in', 'del', 'della', 'di', 'il', 'lo', 'la', 'le', 'i', 'gli'}
-    requested = tokens(query)
-    candidate = tokens(title)
+def match_tokens(value):
+    # Discogs disambiguates artists as "Love (2)". This suffix is not a title word.
+    value = re.sub(r'\s*\(\d+\)', '', value)
+    value = unicodedata.normalize('NFKD', value.casefold())
+    value = ''.join(char for char in value if not unicodedata.combining(char))
+    words = set(re.findall(r'[a-z0-9]+', value))
+    return words - {'the', 'a', 'an', 'and', 'of', 'on', 'in', 'del', 'della', 'di', 'il', 'lo', 'la', 'le', 'i', 'gli'} or words
+
+
+def text_match_score(query, title):
+    requested, candidate = match_tokens(query), match_tokens(title)
     return 2 * len(requested & candidate) / (len(requested) + len(candidate)) if requested and candidate else 0
 
+
+def master_match_score(query, title, artist='', album=''):
+    if artist and album and ' - ' in title:
+        candidate_artist, candidate_album = title.split(' - ', 1)
+        # Each field must match: a title containing "Love" cannot replace the artist.
+        return min(text_match_score(artist, candidate_artist), text_match_score(album, candidate_album))
+    return text_match_score(query, title)
 
 
 def country_key(value):
@@ -263,16 +274,22 @@ async def enrich_edition(row, role, earliest, partial):
 
 
 @app.get('/api/guide')
-async def guide(q: str = Query(min_length=2, max_length=220), master_id: int | None = Query(None, gt=0), country: str = Query('', max_length=80)):
+async def guide(q: str = Query(min_length=2, max_length=220), master_id: int | None = Query(None, gt=0), country: str = Query('', max_length=80), artist: str = Query('', max_length=100), album: str = Query('', max_length=115)):
     if len(q.strip()) < 2: raise HTTPException(422, 'Scrivi artista e titolo.')
     matches = []
     if master_id is None:
-        search = await discogs('/database/search', {'q': q.strip(), 'type': 'master', 'per_page': 10})
+        artist, album = artist.strip(), album.strip()
+        search_params = {'type': 'master', 'per_page': 50}
+        if artist and album:
+            search_params.update({'artist': artist, 'release_title': album})
+        else:
+            search_params['q'] = q.strip()
+        search = await discogs('/database/search', search_params)
         matches = [{k: r.get(k) for k in ('id', 'title', 'year')} for r in search.get('results', [])]
         if not matches: return {'found': False, 'reason': 'Nessun album trovato. Prova artista e titolo senza altri dettagli.'}
-        matches.sort(key=lambda r: (-master_match_score(q, r.get('title') or ''), release_year(r.get('year')) or 9999, r['id']))
-        if master_match_score(q, matches[0].get('title') or '') < .55:
-            return {'found': False, 'reason': 'Il titolo non corrisponde abbastanza. Prova “Artista - Titolo”.'}
+        matches.sort(key=lambda r: (-master_match_score(q, r.get('title') or '', artist, album), release_year(r.get('year')) or 9999, r['id']))
+        if master_match_score(q, matches[0].get('title') or '', artist, album) < .55:
+            return {'found': False, 'reason': 'Nessuna corrispondenza abbastanza precisa. Controlla artista e titolo album.'}
         master_id = matches[0]['id']
     master = await discogs(f'/masters/{master_id}', authenticated=False)
     country = country.strip()
