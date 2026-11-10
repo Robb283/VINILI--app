@@ -116,3 +116,6 @@ Dopo l’attivazione del keyset Production tramite esenzione Marketplace Account
 ## Versione 0.13 — prezzo richiesto
 
 Campo facoltativo in euro, con virgola o punto decimale. Il valore rimane nel browser, non è inviato alle API eBay/Discogs o al server. Per ciascuna edizione confronta il prezzo con la fascia centrale e la mediana dei soli annunci compatibili in EUR: sotto, in linea o sopra la fascia, solo con almeno tre confronti. Nessuna soglia o prezzo simulato. Con uno/due annunci mostra un confronto limitato e la differenza in euro/percentuale per ciascun annuncio, senza verdetto complessivo. Spedizione esclusa, condizioni da confrontare. Modificare o svuotare il prezzo aggiorna i confronti senza rifare la ricerca; il campo vuoto conserva la guida esistente. Annunci non verificati o in altre valute sono esclusi dal confronto.
+
+## Versione 0.14 — Scheda B
+Risultati orizzontali: copertina a sinistra, artista/album e stampa a destra, annunci sotto. Note e matrici raccolte in dettagli espandibili; foto ingrandibili e confronto prezzo invariati. Schede verticali su schermi fino a 760px.
