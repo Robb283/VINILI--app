@@ -173,10 +173,17 @@ def assess(item, edition):
     cat_aspect = aspect_value(data, ['Catalog Number', 'Catalogue Number', 'Numero di catalogo'])
     if cat_aspect and catalogues and not any(catalogue_matches(cat_aspect, c) for c in catalogues): return None
     catalogue_known = any(catalogue_matches(title + ' ' + cat_aspect, c) for c in catalogues)
+    # A different number in the same catalogue series explicitly identifies another issue.
+    if not catalogue_known:
+        for catalogue in catalogues:
+            series = re.fullmatch(r'([a-z]+) (\d+)', norm(catalogue))
+            if series:
+                numbers = re.findall(r'(?<![a-z0-9])' + re.escape(series[1]) + r'\s*(\d+)(?![a-z0-9])', norm(title))
+                if numbers and series[2] not in numbers: return None
     if norm(edition.get('artist')) == norm(edition.get('title')):
         occurrences = len(re.findall(r'(?<![a-z0-9])' + re.escape(norm(edition['title'])) + r'(?![a-z0-9])', norm(title)))
         self_titled = contains(title, 'self titled') or contains(title, 'selftitled')
-        if occurrences < 2 and not catalogue_known and not self_titled and not declared_album: return None
+        if occurrences < 2 and not catalogue_known and not self_titled and norm(declared_album) != norm(edition.get('title')): return None
     if not any('Reissue' in f.get('descriptions', []) or 'Repress' in f.get('descriptions', []) for f in edition.get('formats', [])):
         if re.search(r'\b(?:reissue|repress|remastered|ristampa)\b', norm(title + ' ' + aspect_value(data, ['Edition']))): return None
     evidence = {

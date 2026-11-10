@@ -167,7 +167,7 @@ def test_catalogue_boundaries_do_not_match_a_different_number():
     assert e.catalogue_matches('Love EKL 4001 vinyl','EKL-4001')
     assert not e.catalogue_matches('Love EKL40010 vinyl','EKL-4001')
     data=item();data['title']='Love Love LP US 1966 EKL40010 mono'
-    assert e.assess(data,edition())['compatibility']=='unverified'
+    assert e.assess(data,edition()) is None
 
 
 def test_self_titled_album_does_not_accept_another_album_by_same_band():
@@ -185,3 +185,9 @@ def test_explicit_other_country_pressing_is_excluded():
 def test_self_titled_copy_can_be_identified_by_catalogue_without_repeated_name():
     data=item();data['title']='Love Self Titled LP 1966 US First Issue Mono EKL-4001 Original Gold Label'
     assert e.assess(data,edition())['compatibility']=='compatible'
+
+
+def test_title_catalogue_contradiction_overrides_incorrect_seller_album_aspect():
+    data=item();data['title']='Elektra Love Da Capo Vinyl LP Mono EKL-4005 Black Good 1966 Psych Rock Record'
+    data['localizedAspects']=[{'name':'Release Title','value':'Love'}]
+    assert e.assess(data,edition()) is None
