@@ -161,3 +161,10 @@ def test_route_unconfigured_preserves_guide_and_hides_credentials():
     assert data['status']=='not_configured'
     assert c.get('/api/offers/-1').status_code==422
     assert 'EBAY_CLIENT_SECRET' not in c.get('/static/app.js').text
+
+
+def test_catalogue_boundaries_do_not_match_a_different_number():
+    assert e.catalogue_matches('Love EKL 4001 vinyl','EKL-4001')
+    assert not e.catalogue_matches('Love EKL40010 vinyl','EKL-4001')
+    data=item();data['title']='Love Love LP US 1966 EKL40010 mono'
+    assert e.assess(data,edition())['compatibility']=='unverified'

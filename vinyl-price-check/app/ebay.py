@@ -111,6 +111,13 @@ def contains(text, value):
 def compact(value): return re.sub(r'[^a-z0-9]', '', norm(value))
 
 
+def catalogue_matches(text, catalogue):
+    value = compact(catalogue)
+    if not value: return False
+    pattern = r'(?<![a-z0-9])' + r'[\W_]*'.join(re.escape(c) for c in value) + r'(?![a-z0-9])'
+    return bool(re.search(pattern, norm(text)))
+
+
 def aspects(item):
     return {norm(a.get('name')): str(a.get('value', '')) for a in item.get('localizedAspects', [])}
 
@@ -157,11 +164,11 @@ def assess(item, edition):
     if countries and not any(contains(countries, c) for c in aliases): return None
     catalogues = [x.get('catno', '') for x in edition.get('labels', []) if compact(x.get('catno')) not in ('', 'none', 'unknown')]
     cat_aspect = aspect_value(data, ['Catalog Number', 'Catalogue Number', 'Numero di catalogo'])
-    if cat_aspect and catalogues and not any(compact(c) == compact(cat_aspect) for c in catalogues): return None
+    if cat_aspect and catalogues and not any(catalogue_matches(cat_aspect, c) for c in catalogues): return None
     if not any('Reissue' in f.get('descriptions', []) or 'Repress' in f.get('descriptions', []) for f in edition.get('formats', [])):
         if re.search(r'\b(?:reissue|repress|remastered|ristampa)\b', norm(title + ' ' + aspect_value(data, ['Edition']))): return None
     evidence = {
-        'catalogue': any(compact(c) in compact(title + ' ' + cat_aspect) for c in catalogues),
+        'catalogue': any(catalogue_matches(title + ' ' + cat_aspect, c) for c in catalogues),
         'year': bool(year and year in re.findall(r'\b\d{4}\b', title + ' ' + years)),
         'country': any(contains(title + ' ' + countries, c) for c in aliases) if aliases[0] else False,
         'format': True,
