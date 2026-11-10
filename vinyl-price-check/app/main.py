@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 from app.translate import translate_notes
+from app import ebay
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -37,7 +38,7 @@ async def headers(request: Request, call_next):
     response.headers['Cache-Control'] = 'no-store'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://i.discogs.com https://img.discogs.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://i.discogs.com https://img.discogs.com https://i.ebayimg.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
     return response
 
 
@@ -88,7 +89,7 @@ async def index():
 
 @app.get('/api/health')
 async def health():
-    return {'status': 'ok', 'search_configured': bool(os.getenv('DISCOGS_TOKEN')), 'mode': 'first_press_guide'}
+    return {'status': 'ok', 'search_configured': bool(os.getenv('DISCOGS_TOKEN')), 'mode': 'first_press_guide', 'ebay_configured': ebay.configured()}
 
 
 def release_year(value):
@@ -347,3 +348,15 @@ async def guide(q: str = Query(min_length=2, max_length=220), master_id: int | N
             'available_countries': worldwide['available_countries'],
             'partial': worldwide['partial'], 'checked_at': datetime.now(timezone.utc).isoformat(),
             'limitation': 'Edizioni commerciali datate più vecchie trovate su Discogs; il catalogo può essere incompleto. Più tirature possono condividere lo stesso anno.'}
+
+
+@app.get('/api/offers/{release_id}')
+async def offers(release_id: int):
+    if release_id <= 0: raise HTTPException(422, 'Identificativo edizione non valido.')
+    if not ebay.configured():
+        return {'status': 'not_configured', 'items': [], 'price': {'available': False},
+                'message': 'Collegamento eBay non ancora configurato.'}
+    data = await discogs(f'/releases/{release_id}', authenticated=False)
+    edition = release_details(data)
+    edition['artist'] = ', '.join(x.get('name', '') for x in data.get('artists', []))
+    return await ebay.search_offers(edition)

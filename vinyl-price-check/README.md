@@ -93,3 +93,16 @@ La scelta dell’album confronta anche le parole aggiuntive: un live, un demo o 
 ## Versione 0.11 — ricerca distinta artista/album
 
 La UI invia anche `artist` e `album`: il backend usa i filtri Discogs `artist` e `release_title`, invece di una sola ricerca generica. La graduatoria valuta separatamente entrambi i campi e ignora i suffissi numerici di disambiguazione artista (Love (2)); confronta anche i nomi con/senza accenti. Le richieste storiche con solo `q` restano supportate. Coperti album omonimi come Love — Love e titoli brevi.
+
+
+## Versione 0.12 — eBay Browse Production
+
+Configurare `EBAY_CLIENT_ID` e `EBAY_CLIENT_SECRET` nelle variabili server Render. OAuth client credentials, scope api_scope, token solo in memoria con riuso fino alla scadenza. Nessuna credenziale o token restituito al browser. Mercato EBAY_IT, consegna IT, prezzi nelle valute originali; nessuna conversione inventata. `/api/health` espone solo il booleano `ebay_configured`.
+
+Ogni scheda carica separatamente `/api/offers/{release_id}`: la guida Discogs funziona anche se eBay non risponde. Ricerca artista/titolo/catalogo, fino a 24 riepiloghi per query, fallback artista/titolo/vinyl quando pochi risultati, massimo 8 dettagli per scheda. Mantiene l’ordine eBay. Solo prezzo fisso; escluse aste anche miste Buy It Now, CD, cassette, lotti e accessori riconoscibili. Non assume mai che il paese del venditore o la data di creazione annuncio identifichino la stampa.
+
+L’annuncio è classificato compatibile solo con riferimenti espliciti a catalogo, anno, paese e vinile; mono/stereo richiesto se presente nella stampa di riferimento. Contraddizioni esplicite escludono la copia. Mancanze rendono l’edizione da verificare, esclusa dalla fascia. Non certifica tirature identiche che condividono anno e catalogo; verificare le foto e matrici.
+
+Fascia solo con almeno 3 inserzioni distinte compatibili in EUR, intervallo centrale 25°–75° percentile e mediana disponibili nell’API. È una fascia di prezzi richiesti nel campione, condizioni miste e spedizione esclusa; non valore certificato, non vendite concluse. Nessuno sconto stimato per condizioni sconosciute. Ogni annuncio mostra condizioni dichiarate, spedizione quando fornita da eBay e link alla fonte. Cache volatile 5 minuti, massimo 128 ricerche, concorrenza eBay 3; nessun archivio persistente.
+
+Errori OAuth, permessi Browse, quote, timeout e risultati insufficienti sono distinti senza esporre la risposta riservata upstream. Credenziali valide possono comunque richiedere abilitazione Browse Production da parte di eBay. Documentazione: https://developer.ebay.com/develop/api/buy/browse_api e https://developer.ebay.com/api-docs/master/buy/browse/openapi/3/buy_browse_v1_oas3.json
